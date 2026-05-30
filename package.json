@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=20.0.0"
+    "node": "20.x"
   },
   "scripts": {
     "dev": "next dev",
@@ -19,7 +19,7 @@
     "remotion:render": "remotion render remotion/index.ts LoomVideo out/video.mp4",
     "format": "prettier --write \"**/*.{ts,tsx,md,json,css}\"",
     "test:screenshots": "tsx scripts/test-screenshot-providers.ts",
-    "postinstall": "playwright install chromium"
+    "postinstall": "node scripts/postinstall.mjs"
   },
   "dependencies": {
     "@remotion/bundler": "^4.0.468",

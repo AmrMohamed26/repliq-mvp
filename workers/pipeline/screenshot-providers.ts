@@ -36,9 +36,10 @@ async function writeScreenshotBuffer(outPath: string, buf: Buffer): Promise<void
   await writeFile(outPath, buf);
 }
 
-type ScreenshotLog = {
+export type ScreenshotLog = {
   info: (obj: object, msg: string) => void;
   warn: (obj: object, msg: string) => void;
+  error: (obj: object, msg: string) => void;
 };
 
 export type PaidScreenshotProvider = "scrapingbee" | "zenrows";

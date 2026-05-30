@@ -29,6 +29,7 @@ import {
   captureScreenshotViaPaidProviders,
   hasPaidScreenshotProvider,
   isHardScreenshotHost,
+  type ScreenshotLog,
 } from "./screenshot-providers";
 
 const TIMEOUT = env.PLAYWRIGHT_TIMEOUT_MS;
@@ -149,7 +150,7 @@ async function settlePageAfterLoad(
 async function capturePlaywrightScreenshot(
   url: string,
   outPath: string,
-  log: ReturnType<typeof logger.child>,
+  log: ScreenshotLog,
   opts?: { hardHost?: boolean; upworkLoggedIn?: boolean },
 ): Promise<boolean> {
   const timeout = opts?.hardHost ? HARD_HOST_TIMEOUT_MS : TIMEOUT;
@@ -391,7 +392,7 @@ async function captureFallbackScreenshot(
 async function tryPaidThenPlaceholder(
   url: string,
   outPath: string,
-  log: { info: (o: object, m: string) => void; warn: (o: object, m: string) => void },
+  log: ScreenshotLog,
   reason: string,
 ): Promise<string> {
   if (hasPaidScreenshotProvider()) {
@@ -422,7 +423,12 @@ export async function captureScreenshot(
   await ensureLeadDir(sessionId, leadId);
   const outPath = screenshotPath(sessionId, leadId);
 
-  const log = logger.child({ sessionId, leadId, stage: "screenshot" });
+  const child = logger.child({ sessionId, leadId, stage: "screenshot" });
+  const log: ScreenshotLog = {
+    info: (obj, msg) => child.info(obj, msg),
+    warn: (obj, msg) => child.warn(obj, msg),
+    error: (obj, msg) => child.error(obj, msg),
+  };
 
   if (isHardScreenshotHost(url)) {
     if (!hasPaidScreenshotProvider()) {
