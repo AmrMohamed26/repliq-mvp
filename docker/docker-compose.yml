@@ -1,0 +1,53 @@
+version: "3.9"
+
+services:
+  # ─── Redis ─────────────────────────────────────────────────────────
+  redis:
+    image: redis:7.2-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy noeviction
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ─── Web (Next.js) ─────────────────────────────────────────────────
+  web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file: ../.env
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - repliq_tmp:/tmp/repliq
+    profiles:
+      - full
+
+  # ─── Worker ────────────────────────────────────────────────────────
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.worker
+    restart: unless-stopped
+    env_file: ../.env
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - repliq_tmp:/tmp/repliq
+    profiles:
+      - full
+
+volumes:
+  redis_data:
+  repliq_tmp:

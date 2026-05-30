@@ -1,0 +1,68 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+.pnpm-store/
+
+# next.js
+.next/
+out/
+build/
+dist/
+
+# production
+*.tsbuildinfo
+next-env.d.ts
+
+# misc
+.DS_Store
+*.pem
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-debug.log*
+
+# browser session cookies (Upwork / LinkedIn)
+cookies/*.json
+!cookies/README.md
+
+# env files
+.env
+.env*.local
+.env.development
+.env.production
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+
+# logs
+logs/
+*.log
+
+# runtime / temp
+tmp/
+.tmp/
+.cache/
+
+# playwright
+playwright-report/
+test-results/
+playwright/.cache/
+
+# remotion
+out/
+bundle/
+.remotion/
+
+# os
+Thumbs.db
