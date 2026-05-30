@@ -12,7 +12,14 @@ export function isLegacyShareUrl(url: string): boolean {
   if (url.includes("/v/") && !url.includes("supabase.co")) {
     try {
       const host = new URL(url).hostname.toLowerCase();
-      if (host === "amroo.space" || host === "www.amroo.space") return true;
+      if (
+        host === "amroo.space" ||
+        host === "www.amroo.space" ||
+        host.endsWith(".vercel.app")
+      ) {
+        return false;
+      }
+      if (host !== "localhost" && !host.includes("127.0.0.1")) return true;
     } catch {
       return true;
     }

@@ -36,3 +36,30 @@ export function getWebRedis(): Redis {
   }
   return _webClient;
 }
+
+const WEB_REDIS_CONNECT_MS = 8_000;
+
+/**
+ * Serverless-safe: first Redis command must await connect or requests hang forever.
+ */
+export async function ensureWebRedisConnected(): Promise<Redis> {
+  const redis = getWebRedis();
+  if (redis.status === "ready") return redis;
+
+  await Promise.race([
+    redis.connect(),
+    new Promise<never>((_, reject) => {
+      setTimeout(
+        () =>
+          reject(
+            new Error(
+              "Redis connection timed out. Add REDIS_URL on Vercel (e.g. Upstash) and redeploy.",
+            ),
+          ),
+        WEB_REDIS_CONNECT_MS,
+      );
+    }),
+  ]);
+
+  return redis;
+}

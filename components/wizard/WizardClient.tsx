@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { Sparkles } from "lucide-react";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
 import { Stepper } from "@/components/shared/Stepper";
 import { StepLeads } from "./StepLeads";
 import { StepVideo } from "./StepVideo";
@@ -33,7 +35,7 @@ const SLIDE = {
 
 export function WizardClient() {
   const router = useRouter();
-  const { sessionId, isReady } = useLocalSession();
+  const { sessionId, isReady, sessionError, retrySession } = useLocalSession();
 
   const [step, setStep] = useState(1);
   const [direction, setDirection] = useState(1);
@@ -69,6 +71,33 @@ export function WizardClient() {
         <div className="flex flex-col items-center gap-4">
           <div className="size-6 animate-spin rounded-full border-2 border-border border-t-foreground" />
           <p className="text-sm text-muted-foreground">Starting session…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (sessionError && !sessionId) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-6 text-center">
+        <div className="max-w-md space-y-2">
+          <p className="text-sm font-medium text-foreground">Could not start a session</p>
+          <p className="text-sm text-muted-foreground">{sessionError}</p>
+          <p className="text-xs text-muted-foreground">
+            On Vercel, set <code className="rounded bg-secondary px-1">REDIS_URL</code>{" "}
+            (e.g. Upstash) and{" "}
+            <code className="rounded bg-secondary px-1">NEXT_PUBLIC_APP_URL</code>{" "}
+            to <code className="rounded bg-secondary px-1">https://repliq-mvp.vercel.app</code>,
+            then redeploy.
+          </p>
+        </div>
+        <div className="flex gap-3">
+          <Button onClick={() => retrySession()}>Retry</Button>
+          <Link
+            href="/"
+            className="inline-flex h-9 items-center justify-center rounded-full border border-border px-5 text-sm font-medium transition-colors hover:bg-foreground/[0.05]"
+          >
+            Home
+          </Link>
         </div>
       </div>
     );

@@ -14,12 +14,22 @@ export function isLocalOrigin(url: string): boolean {
   }
 }
 
+/** Vercel injects VERCEL_URL (no scheme) on deployments. */
+function vercelDeploymentOrigin(): string | undefined {
+  const host = process.env.VERCEL_URL?.trim();
+  if (!host || isLocalHostname(host.split(":")[0] ?? host)) return undefined;
+  const bare = host.replace(/^https?:\/\//i, "");
+  return `https://${bare}`;
+}
+
 /** HTTPS origin that Gmail and recipients can reach (not localhost). */
 export function getPublicAppBaseUrl(requestOrigin?: string): string | undefined {
   const fromEnv = process.env.NEXT_PUBLIC_APP_URL?.trim();
   if (fromEnv && !isLocalOrigin(fromEnv)) {
     return fromEnv.replace(/\/$/, "");
   }
+  const vercel = vercelDeploymentOrigin();
+  if (vercel) return vercel;
   if (requestOrigin && !isLocalOrigin(requestOrigin)) {
     return requestOrigin.replace(/\/$/, "");
   }
@@ -34,6 +44,8 @@ export function getAppBaseUrl(requestOrigin?: string): string {
   if (pub) return pub;
   const fromEnv = process.env.NEXT_PUBLIC_APP_URL?.trim();
   if (fromEnv) return fromEnv.replace(/\/$/, "");
+  const vercel = vercelDeploymentOrigin();
+  if (vercel) return vercel;
   if (requestOrigin) {
     const normalized = requestOrigin.startsWith("http")
       ? requestOrigin

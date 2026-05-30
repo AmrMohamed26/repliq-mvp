@@ -1,5 +1,5 @@
 import { nanoid } from "nanoid";
-import { getWebRedis } from "./redis";
+import { ensureWebRedisConnected } from "./redis";
 import { watchPageUrl } from "./app-url";
 import { isLegacyShareUrl } from "./media-url";
 import type { Session, SessionStage } from "@/types/session";
@@ -27,13 +27,14 @@ export async function createSession(): Promise<Session> {
     stage: "created",
     leads: [],
   };
-  const redis = getWebRedis();
+  const redis = await ensureWebRedisConnected();
   await redis.set(key(session.id), JSON.stringify(session), "EX", TTL_SEC);
   return session;
 }
 
 export async function getSession(id: string): Promise<Session | null> {
-  const raw = await getWebRedis().get(key(id));
+  const redis = await ensureWebRedisConnected();
+  const raw = await redis.get(key(id));
   if (!raw) return null;
   return JSON.parse(raw) as Session;
 }
@@ -45,7 +46,8 @@ export async function updateSession(
   const session = await getSession(id);
   if (!session) return null;
   const updated = { ...session, ...patch };
-  await getWebRedis().set(key(id), JSON.stringify(updated), "EX", TTL_SEC);
+  const redis = await ensureWebRedisConnected();
+  await redis.set(key(id), JSON.stringify(updated), "EX", TTL_SEC);
   return updated;
 }
 
@@ -59,13 +61,14 @@ export async function setStage(
 // ─── Leads ────────────────────────────────────────────────────────────────
 
 export async function setLeads(sessionId: string, leads: Lead[]): Promise<void> {
-  const redis = getWebRedis();
+  const redis = await ensureWebRedisConnected();
   await redis.set(leadsKey(sessionId), JSON.stringify(leads), "EX", TTL_SEC);
   await updateSession(sessionId, { leads, stage: "csv_uploaded" });
 }
 
 export async function getLeads(sessionId: string): Promise<Lead[]> {
-  const raw = await getWebRedis().get(leadsKey(sessionId));
+  const redis = await ensureWebRedisConnected();
+  const raw = await redis.get(leadsKey(sessionId));
   if (!raw) return [];
   return JSON.parse(raw) as Lead[];
 }
@@ -90,7 +93,8 @@ function videoIndexKey(leadId: string): string {
 }
 
 export async function getVideoIndex(leadId: string): Promise<VideoIndex | null> {
-  const raw = await getWebRedis().get(videoIndexKey(leadId));
+  const redis = await ensureWebRedisConnected();
+  const raw = await redis.get(videoIndexKey(leadId));
   if (!raw) return null;
   try {
     return JSON.parse(raw) as VideoIndex;
@@ -111,7 +115,7 @@ export async function setLeadResult(
   sessionId: string,
   result: LeadResult,
 ): Promise<void> {
-  const redis = getWebRedis();
+  const redis = await ensureWebRedisConnected();
 
   let enriched = result;
 
@@ -182,7 +186,8 @@ async function repairStoredResult(result: LeadResult): Promise<LeadResult> {
 export async function getAllResults(
   sessionId: string,
 ): Promise<LeadResult[]> {
-  const hash = await getWebRedis().hgetall(resultsKey(sessionId));
+  const redis = await ensureWebRedisConnected();
+  const hash = await redis.hgetall(resultsKey(sessionId));
   if (!hash) return [];
   const results = Object.values(hash).map((v) => JSON.parse(v) as LeadResult);
   return Promise.all(results.map(repairStoredResult));
@@ -192,7 +197,8 @@ export async function getLeadResult(
   sessionId: string,
   leadId: string,
 ): Promise<LeadResult | null> {
-  const raw = await getWebRedis().hget(resultsKey(sessionId), leadId);
+  const redis = await ensureWebRedisConnected();
+  const raw = await redis.hget(resultsKey(sessionId), leadId);
   if (!raw) return null;
   const result = JSON.parse(raw) as LeadResult;
   return repairStoredResult(result);
@@ -228,7 +234,8 @@ export async function setCheckpoint(
   leadId: string,
   checkpoint: LeadCheckpoint,
 ): Promise<void> {
-  await getWebRedis().set(
+  const redis = await ensureWebRedisConnected();
+  await redis.set(
     checkpointKey(sessionId, leadId),
     JSON.stringify(checkpoint),
     "EX",
@@ -240,7 +247,8 @@ export async function getCheckpoint(
   sessionId: string,
   leadId: string,
 ): Promise<LeadCheckpoint | null> {
-  const raw = await getWebRedis().get(checkpointKey(sessionId, leadId));
+  const redis = await ensureWebRedisConnected();
+  const raw = await redis.get(checkpointKey(sessionId, leadId));
   if (!raw) return null;
   try {
     return JSON.parse(raw) as LeadCheckpoint;
@@ -253,7 +261,8 @@ export async function clearCheckpoint(
   sessionId: string,
   leadId: string,
 ): Promise<void> {
-  await getWebRedis().del(checkpointKey(sessionId, leadId));
+  const redis = await ensureWebRedisConnected();
+  await redis.del(checkpointKey(sessionId, leadId));
 }
 
 // ─── Batch Health Summary ──────────────────────────────────────────────────
@@ -276,7 +285,8 @@ function summaryKey(sessionId: string): string {
 }
 
 export async function saveBatchSummary(summary: BatchSummary): Promise<void> {
-  await getWebRedis().set(
+  const redis = await ensureWebRedisConnected();
+  await redis.set(
     summaryKey(summary.sessionId),
     JSON.stringify(summary),
     "EX",
@@ -287,7 +297,8 @@ export async function saveBatchSummary(summary: BatchSummary): Promise<void> {
 export async function getBatchSummary(
   sessionId: string,
 ): Promise<BatchSummary | null> {
-  const raw = await getWebRedis().get(summaryKey(sessionId));
+  const redis = await ensureWebRedisConnected();
+  const raw = await redis.get(summaryKey(sessionId));
   if (!raw) return null;
   try {
     return JSON.parse(raw) as BatchSummary;
