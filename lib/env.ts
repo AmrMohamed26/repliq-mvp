@@ -39,6 +39,8 @@ const serverSchema = z.object({
   RENDER_CONCURRENCY: z.coerce.number().int().positive().max(6).default(2),
   /** H.264 CRF — 18 = highest quality, 20 = balanced speed/quality. */
   REMOTION_CRF: z.coerce.number().int().min(18).max(28).default(20),
+  /** Max ms for one Remotion renderMedia call (Railway needs headroom for bundle + encode). */
+  RENDER_TIMEOUT_MS: z.coerce.number().int().positive().default(1_200_000),
   TMP_DIR: z.string().default("/tmp/repliq"),
   SCRAPINGBEE_API_KEY: z.preprocess(
     emptyStringToUndefined,
@@ -81,6 +83,7 @@ const serverEnvInput = {
   RENDER_HEIGHT: process.env.RENDER_HEIGHT,
   RENDER_CONCURRENCY: process.env.RENDER_CONCURRENCY,
   REMOTION_CRF: process.env.REMOTION_CRF,
+  RENDER_TIMEOUT_MS: process.env.RENDER_TIMEOUT_MS,
   TMP_DIR: process.env.TMP_DIR,
   SCRAPINGBEE_API_KEY: process.env.SCRAPINGBEE_API_KEY,
   ZENROWS_API_KEY: process.env.ZENROWS_API_KEY,

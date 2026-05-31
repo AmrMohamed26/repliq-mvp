@@ -63,6 +63,10 @@ async function main() {
     {
       connection: bullmqConnection,
       concurrency: env.WORKER_CONCURRENCY,
+      /** Remotion renders can run 10–30+ min on small Railway instances. */
+      lockDuration: 60 * 60 * 1000,
+      stalledInterval: 120_000,
+      maxStalledCount: 2,
       limiter: {
         // Max N jobs active at once — prevents Chromium context overload
         max: env.WORKER_CONCURRENCY,

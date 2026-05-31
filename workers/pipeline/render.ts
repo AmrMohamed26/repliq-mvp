@@ -32,19 +32,75 @@ const remotionPublicDir = path.join(env.TMP_DIR, "remotion-public");
  * Returns the path to the compiled Remotion webpack bundle.
  * Concurrent callers wait on the same Promise — only one webpack build runs.
  */
+async function readPrebuiltBundlePath(): Promise<string | null> {
+  const fromEnv = process.env.REMOTION_BUNDLE_PATH?.trim();
+  if (fromEnv) {
+    try {
+      await fs.access(fromEnv);
+      return fromEnv;
+    } catch {
+      logger.warn({ fromEnv }, "REMOTION_BUNDLE_PATH missing on disk");
+    }
+  }
+  const marker = path.join(process.cwd(), ".remotion-bundle-path");
+  try {
+    const p = (await fs.readFile(marker, "utf8")).trim();
+    if (p) {
+      await fs.access(p);
+      return p;
+    }
+  } catch {
+    /* no prebuilt bundle */
+  }
+  return null;
+}
+
 async function getBundlePath(): Promise<string> {
   if (bundlePathCache) return bundlePathCache;
   if (bundlingInFlight) return bundlingInFlight;
 
+  const prebuilt = await readPrebuiltBundlePath();
+  if (prebuilt) {
+    bundlePathCache = prebuilt;
+    logger.info({ bundlePath: prebuilt }, "using prebuilt Remotion bundle");
+    return prebuilt;
+  }
+
   bundlingInFlight = (async () => {
     const entryPoint = path.resolve(process.cwd(), "remotion/index.ts");
     logger.info({ entryPoint }, "bundling Remotion composition (first run)…");
+    // #region agent log
+    fetch("http://127.0.0.1:7489/ingest/874f54e3-af15-42bb-a33a-e094f9419f9f", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Debug-Session-Id": "b8d92c",
+      },
+      body: JSON.stringify({
+        sessionId: "b8d92c",
+        runId: "render-stuck",
+        hypothesisId: "H1",
+        location: "render.ts:getBundlePath",
+        message: "runtime webpack bundle start",
+        data: { entryPoint },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
 
     await fs.mkdir(remotionPublicDir, { recursive: true });
+    let lastBundlePct = -1;
     const result = await bundle({
       entryPoint,
       publicDir: remotionPublicDir,
       symlinkPublicDir: true,
+      onProgress: (p) => {
+        const pct = Math.floor(p * 100);
+        if (pct >= lastBundlePct + 25) {
+          lastBundlePct = pct;
+          logger.info({ progress: pct }, "Remotion bundle progress");
+        }
+      },
     });
     bundlePathCache = result;
     bundlingInFlight = null;
@@ -206,7 +262,8 @@ export async function renderVideo(input: RenderInput): Promise<string> {
       logLevel: "error",
     });
 
-    await renderMedia({
+    let lastRenderPct = -1;
+    const renderPromise = renderMedia({
       composition,
       serveUrl: bundlePath,
       codec: "h264",
@@ -216,7 +273,53 @@ export async function renderVideo(input: RenderInput): Promise<string> {
       pixelFormat: "yuv420p",
       concurrency: REMOTION_FRAME_CONCURRENCY,
       logLevel: "error",
+      onProgress: ({ progress }) => {
+        const pct = Math.round(progress * 100);
+        if (pct >= lastRenderPct + 10) {
+          lastRenderPct = pct;
+          logger.info({ leadId, renderPct: pct }, "Remotion render progress");
+        }
+        // #region agent log
+        if (pct >= 25 && pct % 25 === 0 && pct !== lastRenderPct) {
+          fetch(
+            "http://127.0.0.1:7489/ingest/874f54e3-af15-42bb-a33a-e094f9419f9f",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Debug-Session-Id": "b8d92c",
+              },
+              body: JSON.stringify({
+                sessionId: "b8d92c",
+                runId: "render-stuck",
+                hypothesisId: "H2",
+                location: "render.ts:renderMedia",
+                message: "render progress",
+                data: { leadId, pct },
+                timestamp: Date.now(),
+              }),
+            },
+          ).catch(() => {});
+        }
+        // #endregion
+      },
     });
+
+    const timeoutMs = env.RENDER_TIMEOUT_MS;
+    await Promise.race([
+      renderPromise,
+      new Promise<never>((_, reject) => {
+        setTimeout(
+          () =>
+            reject(
+              new Error(
+                `Remotion render timed out after ${Math.round(timeoutMs / 60_000)} minutes`,
+              ),
+            ),
+          timeoutMs,
+        );
+      }),
+    ]);
 
     logger.info({ leadId, outPath }, "renderVideo: complete");
     return outPath;

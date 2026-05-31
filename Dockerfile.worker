@@ -6,8 +6,13 @@ WORKDIR /app
 
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 ENV NODE_ENV=production
-# ffmpeg-static install.js is skipped by npm ci --ignore-scripts; use system ffmpeg.
 ENV FFMPEG_BIN=/usr/bin/ffmpeg
+# Small Railway instances: one job at a time, faster encode settings.
+ENV WORKER_CONCURRENCY=1
+ENV RENDER_CONCURRENCY=1
+ENV REMOTION_CRF=22
+ENV RENDER_TIMEOUT_MS=1200000
+ENV REMOTION_BUNDLE_PATH=/app/.cache/remotion-bundle
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ffmpeg \
@@ -17,5 +22,9 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts
 
 COPY . .
+
+# Pre-bundle Remotion at image build so first lead is not stuck on "Rendering" for webpack.
+RUN mkdir -p /app/.cache/remotion-bundle /app/tmp/remotion-public \
+  && node --import tsx scripts/bundle-remotion.ts
 
 CMD ["npm", "run", "worker"]
