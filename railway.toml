@@ -1,6 +1,7 @@
 # Railway worker service — background BullMQ consumer (web app stays on Vercel).
 [build]
-buildCommand = "npm ci"
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile.worker"
 
 [deploy]
 startCommand = "npm run worker"

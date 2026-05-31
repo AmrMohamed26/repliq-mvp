@@ -1,0 +1,16 @@
+# Railway worker — Playwright base image includes Chromium + all Linux system deps.
+# Must match the "playwright" npm version in package.json (1.60.x).
+FROM mcr.microsoft.com/playwright:v1.60.0-jammy
+
+WORKDIR /app
+
+# Browsers are preinstalled in /ms-playwright; skip postinstall download.
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+ENV NODE_ENV=production
+
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+
+COPY . .
+
+CMD ["npm", "run", "worker"]
