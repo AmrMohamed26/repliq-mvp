@@ -1,7 +1,12 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import { env } from "./env";
 import { logger } from "./logger";
+
+export function isSupabaseStorageConfigured(): boolean {
+  return hasSupabaseConfig();
+}
 
 function hasSupabaseConfig(): boolean {
   return Boolean(
@@ -129,4 +134,22 @@ export async function uploadFile(
   const url = assertPublicHttpsUrl(key);
   logger.info({ key, url }, "uploaded asset to Supabase Storage");
   return url;
+}
+
+/** Download a storage object to a local path (worker pulls Vercel-uploaded talking heads). */
+export async function downloadFileToPath(
+  key: string,
+  destPath: string,
+): Promise<void> {
+  const client = assertStorageConfigured();
+  const { data, error } = await client.storage
+    .from(env.SUPABASE_BUCKET)
+    .download(key.replace(/^\//, ""));
+  if (error) throw error;
+  if (!data) throw new Error(`Empty download for ${key}`);
+
+  await mkdir(dirname(destPath), { recursive: true });
+  const buf = Buffer.from(await data.arrayBuffer());
+  await writeFile(destPath, buf);
+  logger.info({ key, destPath, bytes: buf.length }, "downloaded asset from Supabase Storage");
 }

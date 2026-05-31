@@ -95,6 +95,7 @@ export async function POST(request: NextRequest) {
         email: lead.email,
         website: lead.website,
         talkingHeadPath: session.talkingHeadPath!,
+        talkingHeadStorageKey: session.talkingHeadStorageKey,
         durationSec: session.talkingHeadDurationSec!,
       } satisfies LeadJobData,
       opts: { priority: NEW_BATCH_JOB_PRIORITY },

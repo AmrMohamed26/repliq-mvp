@@ -5,6 +5,7 @@ export interface LeadJobData {
   email: string;
   website: string;
   talkingHeadPath: string;
+  talkingHeadStorageKey?: string;
   durationSec: number;
 }
 

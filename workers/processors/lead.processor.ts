@@ -19,6 +19,7 @@ import {
   type BatchSummary,
 } from "@/lib/session";
 import { cleanupLeadFiles } from "@/lib/files";
+import { ensureTalkingHeadLocal } from "@/lib/talking-head";
 import { logger } from "@/lib/logger";
 import type Redis from "ioredis";
 import { PROGRESS_CHANNEL } from "@/lib/queue";
@@ -151,6 +152,7 @@ export async function processLead(
     email,
     website,
     talkingHeadPath,
+    talkingHeadStorageKey,
     durationSec,
   } = job.data;
 
@@ -249,8 +251,16 @@ export async function processLead(
 
   let renderTime: number | undefined;
 
+  let localTalkingHeadPath = talkingHeadPath;
+
   try {
     await assertNotCancelled();
+
+    localTalkingHeadPath = await ensureTalkingHeadLocal(
+      sessionId,
+      talkingHeadPath,
+      talkingHeadStorageKey,
+    );
 
     // ── Stage 1: Screenshot ──────────────────────────────────────────────────
     if (!screenshotPngPath) {
@@ -282,7 +292,7 @@ export async function processLead(
         sessionId,
         leadId,
         screenshotPngPath,
-        talkingHeadPath,
+        talkingHeadPath: localTalkingHeadPath,
         leadName: name,
         durationSec,
       };

@@ -3,7 +3,10 @@ import { getSession, updateSession } from "@/lib/session";
 import { receiveFileUpload, UploadError } from "@/lib/upload";
 import { probeDuration } from "@/lib/ffprobe";
 import { ensureSessionDir, talkingHeadPath } from "@/lib/files";
+import { uploadTalkingHeadToStorage } from "@/lib/talking-head";
+import { isSupabaseStorageConfigured } from "@/lib/storage";
 import { ok, notFound, badRequest, conflict, handleError } from "@/lib/api";
+import { logger } from "@/lib/logger";
 import { VIDEO_MAX_BYTES, VIDEO_ALLOWED_TYPES } from "@/lib/validators";
 
 /**
@@ -50,12 +53,32 @@ export async function POST(request: NextRequest) {
       return badRequest(msg, "INVALID_VIDEO");
     }
 
+    let talkingHeadStorageKey: string | undefined;
+    try {
+      talkingHeadStorageKey = await uploadTalkingHeadToStorage(
+        sessionId,
+        destPath,
+      );
+    } catch (err) {
+      logger.error({ err, sessionId }, "talking head Supabase upload failed");
+    }
+
+    if (process.env.VERCEL === "1" && !talkingHeadStorageKey) {
+      return badRequest(
+        isSupabaseStorageConfigured()
+          ? "Video saved but could not upload to Supabase for background processing. Check Supabase env vars and bucket permissions on Vercel."
+          : "On Vercel, set SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_BUCKET, and SUPABASE_PUBLIC_BASE_URL so the worker can access your talking-head video.",
+        "STORAGE_UPLOAD_FAILED",
+      );
+    }
+
     // Persist talking head metadata in the session
     // Stage advances to video_uploaded (or stays at video_uploaded if re-uploaded)
     const nextStage =
       session.stage === "created" ? ("video_uploaded" as const) : session.stage;
     await updateSession(sessionId, {
       talkingHeadPath: destPath,
+      talkingHeadStorageKey,
       talkingHeadDurationSec: durationSec,
       stage:
         session.stage === "csv_uploaded" || session.stage === "video_uploaded"

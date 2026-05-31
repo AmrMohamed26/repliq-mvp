@@ -77,11 +77,18 @@ export function ProcessingDashboard({
     results.length === 0 ||
     results.every((r) => r.status === "pending");
 
+  const onDeployedSite =
+    typeof window !== "undefined" &&
+    (window.location.hostname.endsWith(".vercel.app") ||
+      window.location.hostname === "repliq-mvp.vercel.app");
+
   // Detect stopped worker: jobs waiting in BullMQ but nothing active
   useEffect(() => {
     if (isBatchDone || totalLeads === 0) return;
 
-    const timer = setTimeout(async () => {
+    let cancelled = false;
+
+    async function pollQueue() {
       try {
         const res = await fetch(
           `/api/health/queue?sessionId=${encodeURIComponent(sessionId)}`,
@@ -92,6 +99,7 @@ export function ProcessingDashboard({
           otherSessionWaiting?: number;
           workerLikelyDown?: boolean;
         };
+        if (cancelled) return;
         setQueueBacklog({
           waiting: data.waiting ?? 0,
           active: data.active ?? 0,
@@ -107,9 +115,16 @@ export function ProcessingDashboard({
       } catch {
         /* ignore */
       }
-    }, 12_000);
+    }
 
-    return () => clearTimeout(timer);
+    const first = setTimeout(pollQueue, 4_000);
+    const interval = setInterval(pollQueue, 8_000);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(first);
+      clearInterval(interval);
+    };
   }, [sessionId, isBatchDone, totalLeads, completedCount, activeCount]);
 
   async function handleCancel() {
@@ -242,10 +257,22 @@ export function ProcessingDashboard({
         <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-200">
           <p className="font-medium">Background worker is not running</p>
           <p className="mt-1 text-xs text-amber-200/80">
-            Jobs are queued but nothing is processing. In a separate terminal run:{" "}
+            Jobs are queued in Redis but nothing is processing them. On your Mac,
+            open a terminal in this project and run{" "}
             <code className="rounded bg-black/40 px-1.5 py-0.5 font-mono text-[11px]">
               npm run worker:dev
             </code>
+            {onDeployedSite ? (
+              <>
+                {" "}
+                Your <code className="rounded bg-black/40 px-1 font-mono text-[11px]">.env</code>{" "}
+                must use the same <code className="rounded bg-black/40 px-1 font-mono text-[11px]">REDIS_URL</code> as
+                Vercel (Upstash). Re-upload the talking-head video on this site after deploying the latest code so it
+                is stored in Supabase for the worker to download.
+              </>
+            ) : (
+              " (same machine as the app, or same REDIS_URL as production)."
+            )}
           </p>
         </div>
       )}

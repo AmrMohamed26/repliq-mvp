@@ -14,5 +14,7 @@ export interface Session {
   stage: SessionStage;
   leads: Lead[];
   talkingHeadPath?: string;
+  /** Supabase object key when the talking head was uploaded from Vercel/serverless. */
+  talkingHeadStorageKey?: string;
   talkingHeadDurationSec?: number;
 }
