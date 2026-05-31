@@ -38,9 +38,17 @@ async function main() {
     logFn({ platform: p.platform, health: p.health }, p.message);
   }
 
-  // Pre-warm the browser so the first job doesn't pay launch cost
-  await getBrowser();
-  logger.info("Chromium browser pre-warmed");
+  // Pre-warm Chromium (requires Playwright OS deps on Linux — see postinstall --with-deps)
+  try {
+    await getBrowser();
+    logger.info("Chromium browser pre-warmed");
+  } catch (err) {
+    logger.error(
+      { err },
+      "Chromium pre-warm failed — check Playwright install on this host (Railway: npm ci must run postinstall with --with-deps)",
+    );
+    throw err;
+  }
 
   // Dedicated Redis client for publishing progress events.
   // BullMQ uses its own internal connection; the publisher is separate.

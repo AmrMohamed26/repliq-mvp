@@ -24,6 +24,7 @@ export async function getBrowser(): Promise<Browser> {
       "--no-sandbox",
       "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
+      "--disable-software-rasterizer",
       "--disable-gpu",
       "--disable-web-security",
       "--disable-features=IsolateOrigins,site-per-process",
