@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { newContext } from "../browser";
+import { newContext, resetBrowserForScreenshot } from "../browser";
 import { screenshotPath, ensureLeadDir } from "@/lib/files";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
@@ -157,33 +157,35 @@ async function capturePlaywrightScreenshot(
   const linkedIn = isLinkedInUrl(url);
   const upworkLoggedIn = Boolean(opts?.upworkLoggedIn);
 
-  const context = await newContext();
-  try {
-    const siteCookies = await getCookiesForUrl(url);
-    const cookieCount = siteCookies?.playwright.length ?? 0;
-    logScreenshotDebug(
-      "screenshot.ts:capturePlaywrightScreenshot",
-      "playwright start",
-      {
-        url,
-        hardHost: Boolean(opts?.hardHost),
-        linkedIn,
-        upworkLoggedIn,
-        cookieCount,
-      },
-      "E",
-    );
+  for (let browserAttempt = 0; browserAttempt < 2; browserAttempt++) {
+    const context = await newContext();
+    try {
+      const siteCookies = await getCookiesForUrl(url);
+      const cookieCount = siteCookies?.playwright.length ?? 0;
+      logScreenshotDebug(
+        "screenshot.ts:capturePlaywrightScreenshot",
+        "playwright start",
+        {
+          url,
+          hardHost: Boolean(opts?.hardHost),
+          linkedIn,
+          upworkLoggedIn,
+          cookieCount,
+          browserAttempt,
+        },
+        "E",
+      );
 
-    if (siteCookies?.playwright.length) {
-      await context.addCookies(siteCookies.playwright);
-    }
+      if (siteCookies?.playwright.length) {
+        await context.addCookies(siteCookies.playwright);
+      }
 
-    await context.addInitScript(() => {
-      Object.defineProperty(navigator, "webdriver", {
-        get: () => undefined,
+      await context.addInitScript(() => {
+        Object.defineProperty(navigator, "webdriver", {
+          get: () => undefined,
+        });
       });
-    });
-    const page = await context.newPage();
+      const page = await context.newPage();
 
     await page.route(
       /\.(woff2?|ttf|otf|eot|mp4|webm|ogg|mp3|wav)(\?.*)?$/i,
@@ -296,19 +298,28 @@ async function capturePlaywrightScreenshot(
       return false;
     }
 
-    return true;
-  } catch (err) {
-    log.warn({ url, err }, "Playwright screenshot failed");
-    logScreenshotDebug(
-      "screenshot.ts:capturePlaywrightScreenshot",
-      "playwright error",
-      { url, error: err instanceof Error ? err.message : String(err) },
-      "E",
-    );
-    return false;
-  } finally {
-    await context.close().catch(() => undefined);
+      return true;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const closed =
+        /has been closed|Target closed|Browser has been closed/i.test(msg);
+      log.warn({ url, err, browserAttempt: browserAttempt }, "Playwright screenshot failed");
+      logScreenshotDebug(
+        "screenshot.ts:capturePlaywrightScreenshot",
+        "playwright error",
+        { url, error: msg, browserAttempt, closed },
+        "E",
+      );
+      if (closed && browserAttempt === 0) {
+        await resetBrowserForScreenshot();
+        continue;
+      }
+      return false;
+    } finally {
+      await context.close().catch(() => undefined);
+    }
   }
+  return false;
 }
 
 async function waitForBodyTextStability(page: Page) {
@@ -546,6 +557,16 @@ export async function captureScreenshot(
 
     if (isUpworkUrl(url)) {
       log.warn({ url, status: "fallback" }, "Upwork — placeholder after ScrapingBee failed");
+      await captureFallbackScreenshot(outPath, url);
+      return outPath;
+    }
+
+    // LinkedIn without worker cookies: Playwright on Railway often crashes the shared browser.
+    if (isLinkedInUrl(url)) {
+      log.warn(
+        { url, status: "fallback" },
+        "LinkedIn — ScrapingBee failed; add SCRAPINGBEE_API_KEY or cookies/linkedin.json on the worker",
+      );
       await captureFallbackScreenshot(outPath, url);
       return outPath;
     }
