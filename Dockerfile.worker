@@ -10,7 +10,8 @@ ENV FFMPEG_BIN=/usr/bin/ffmpeg
 # Small Railway instances: one job at a time, faster encode settings.
 ENV WORKER_CONCURRENCY=1
 ENV RENDER_CONCURRENCY=1
-ENV REMOTION_CRF=22
+ENV REMOTION_CRF=24
+ENV REMOTION_SCALE=0.75
 ENV RENDER_TIMEOUT_MS=1200000
 ENV REMOTION_BUNDLE_PATH=/app/.cache/remotion-bundle
 # Must match bundle-remotion publicDir so prebuilt `public/` symlink resolves correctly.

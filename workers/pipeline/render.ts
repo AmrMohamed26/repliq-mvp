@@ -13,6 +13,8 @@ import { SCREENSHOT_VIEWPORT } from "./screenshot-viewport";
 import {
   REMOTION_CRF,
   REMOTION_FRAME_CONCURRENCY,
+  REMOTION_SCALE,
+  REMOTION_OFFTHREAD_CACHE_BYTES,
 } from "@/lib/render-settings";
 
 ffmpeg.setFfmpegPath(resolveFfmpegPath());
@@ -192,104 +194,6 @@ async function resolveBundlePublicDir(bundlePath: string): Promise<string> {
   }
 }
 
-async function probeVideoStream(
-  filePath: string,
-): Promise<{ codec?: string; pixFmt?: string }> {
-  const metadata = await new Promise<ffmpeg.FfprobeData>((resolve, reject) => {
-    ffmpeg.ffprobe(filePath, (err, data) => {
-      if (err) reject(err);
-      else resolve(data);
-    });
-  });
-  const video = metadata.streams.find((s) => s.codec_type === "video");
-  return { codec: video?.codec_name, pixFmt: video?.pix_fmt };
-}
-
-/** Remotion's headless Chromium only reliably plays H.264 yuv420p in MP4. */
-async function prepareTalkingHeadForRender(
-  sourcePath: string,
-  sessionId: string,
-  leadId: string,
-): Promise<string> {
-  const sourceStat = await fs.stat(sourcePath);
-  if (sourceStat.size < 1_000) {
-    throw new Error(
-      `talking head file is too small (${sourceStat.size} bytes): ${sourcePath}`,
-    );
-  }
-
-  const { codec, pixFmt } = await probeVideoStream(sourcePath);
-  const browserSafe =
-    codec === "h264" && (!pixFmt || pixFmt === "yuv420p");
-
-  // #region agent log
-  fetch("http://127.0.0.1:7489/ingest/874f54e3-af15-42bb-a33a-e094f9419f9f", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Debug-Session-Id": "b8d92c",
-    },
-    body: JSON.stringify({
-      sessionId: "b8d92c",
-      runId: "video-playback",
-      hypothesisId: "H2",
-      location: "render.ts:prepareTalkingHeadForRender",
-      message: "talking head codec probe",
-      data: {
-        leadId,
-        codec,
-        pixFmt,
-        browserSafe,
-        bytes: sourceStat.size,
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
-
-  if (browserSafe) return sourcePath;
-
-  const outPath = path.join(leadDir(sessionId, leadId), "talking-head-remotion.mp4");
-  logger.info(
-    { leadId, codec, pixFmt, sourcePath },
-    "transcoding talking head for Remotion Chromium",
-  );
-
-  await new Promise<void>((resolve, reject) => {
-    ffmpeg(sourcePath)
-      .outputOptions([
-        "-c:v",
-        "libx264",
-        "-pix_fmt",
-        "yuv420p",
-        "-profile:v",
-        "baseline",
-        "-preset",
-        "fast",
-        "-crf",
-        "23",
-        "-c:a",
-        "aac",
-        "-b:a",
-        "128k",
-        "-movflags",
-        "+faststart",
-      ])
-      .output(outPath)
-      .on("end", () => resolve())
-      .on("error", (err) => reject(err))
-      .run();
-  });
-
-  const outStat = await fs.stat(outPath);
-  if (outStat.size < 1_000) {
-    throw new Error(
-      `talking head transcode produced invalid file (${outStat.size} bytes)`,
-    );
-  }
-  return outPath;
-}
-
 async function placeAsset(
   publicDir: string,
   target: string,
@@ -369,12 +273,6 @@ export async function renderVideo(input: RenderInput): Promise<string> {
     sessionId,
     leadId,
   );
-  const preparedTalkingHead = await prepareTalkingHeadForRender(
-    talkingHeadPath,
-    sessionId,
-    leadId,
-  );
-
   const screenshotName = assetName(sessionId, leadId, "screenshot.jpg");
   const videoName = assetName(sessionId, leadId, "video.mp4");
 
@@ -383,7 +281,7 @@ export async function renderVideo(input: RenderInput): Promise<string> {
     preparedScreenshot,
     screenshotName,
   );
-  const videoLink = await placeAsset(publicDir, preparedTalkingHead, videoName);
+  const videoLink = await placeAsset(publicDir, talkingHeadPath, videoName);
   const [screenshotStat, videoStat] = await Promise.all([
     fs.lstat(screenshotLink),
     fs.lstat(videoLink),
@@ -421,6 +319,32 @@ export async function renderVideo(input: RenderInput): Promise<string> {
       logLevel: "error",
     });
 
+    const mem = process.memoryUsage();
+    // #region agent log
+    fetch("http://127.0.0.1:7489/ingest/874f54e3-af15-42bb-a33a-e094f9419f9f", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Debug-Session-Id": "b8d92c",
+      },
+      body: JSON.stringify({
+        sessionId: "b8d92c",
+        runId: "sigkill-oom",
+        hypothesisId: "H1",
+        location: "render.ts:renderMedia",
+        message: "memory before remotion render",
+        data: {
+          leadId,
+          rssMb: Math.round(mem.rss / 1024 / 1024),
+          heapMb: Math.round(mem.heapUsed / 1024 / 1024),
+          remotionScale: REMOTION_SCALE,
+          frameConcurrency: REMOTION_FRAME_CONCURRENCY,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+
     let lastRenderPct = -1;
     let lastDebugPct = -1;
     const renderPromise = renderMedia({
@@ -432,6 +356,11 @@ export async function renderVideo(input: RenderInput): Promise<string> {
       crf: REMOTION_CRF,
       pixelFormat: "yuv420p",
       concurrency: REMOTION_FRAME_CONCURRENCY,
+      scale: REMOTION_SCALE,
+      disallowParallelEncoding: true,
+      offthreadVideoThreads: 1,
+      offthreadVideoCacheSizeInBytes: REMOTION_OFFTHREAD_CACHE_BYTES,
+      x264Preset: "ultrafast",
       logLevel: "error",
       onProgress: ({ progress }) => {
         const pct = Math.round(progress * 100);

@@ -2,8 +2,10 @@ import { access } from "node:fs/promises";
 import type { Job } from "bullmq";
 import type { LeadJobData, ProgressEvent } from "@/types/job";
 import type { LeadStatus } from "@/types/lead";
+import { closeBrowser } from "../browser";
 import { captureScreenshot } from "../pipeline/screenshot";
 import { renderVideo } from "../pipeline/render";
+import { prepareTalkingHeadForRemotion } from "../pipeline/talking-head-prepare";
 import { extractThumbnail } from "../pipeline/thumbnail";
 import { uploadAssets } from "../pipeline/upload";
 import {
@@ -312,6 +314,19 @@ export async function processLead(
     // ── Stage 2: Render (1× retry) ───────────────────────────────────────────
     if (!videoPath) {
       await assertNotCancelled();
+
+      // Free Playwright RAM before Remotion (Chromium + FFmpeg) — avoids SIGKILL on Railway.
+      await closeBrowser();
+      log.info(
+        { stage: "render", status: "preparing" },
+        "released Playwright before Remotion render",
+      );
+
+      localTalkingHeadPath = await prepareTalkingHeadForRemotion(
+        localTalkingHeadPath,
+        sessionId,
+      );
+
       log.info({ stage: "render", status: "starting" }, "starting video render");
       await publish("rendering");
 
