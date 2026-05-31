@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Image from "next/image";
 import { Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -21,28 +22,45 @@ export function VideoPlayer({ videoUrl, posterUrl, className }: VideoPlayerProps
     setStarted(true);
   }
 
+  const showPoster = Boolean(posterUrl && !started);
+
   return (
     <div
       className={cn(
-        "relative w-full overflow-hidden rounded-2xl border border-white/10 bg-black shadow-2xl shadow-black/50",
+        "relative aspect-video w-full overflow-hidden rounded-2xl border border-white/10 bg-black shadow-2xl shadow-black/50",
         className,
       )}
     >
+      {showPoster && posterUrl && (
+        <Image
+          src={posterUrl}
+          alt=""
+          fill
+          priority
+          quality={95}
+          sizes="(max-width: 960px) 92vw, 960px"
+          className="object-cover"
+        />
+      )}
+
       <video
         ref={videoRef}
-        className="block aspect-video w-full bg-black object-contain"
+        className={cn(
+          "absolute inset-0 h-full w-full bg-black object-contain",
+          showPoster ? "opacity-0" : "opacity-100",
+        )}
         src={videoUrl}
-        poster={posterUrl}
         controls={started}
         playsInline
-        preload="metadata"
+        preload={showPoster ? "none" : "metadata"}
         onPlay={() => setStarted(true)}
       />
-      {!started && (
+
+      {showPoster && (
         <button
           type="button"
           onClick={handlePlayClick}
-          className="absolute inset-0 flex cursor-pointer items-center justify-center border-0 bg-black/25 p-0 transition-colors hover:bg-black/35"
+          className="absolute inset-0 z-10 flex cursor-pointer items-center justify-center border-0 bg-black/20 p-0 transition-colors hover:bg-black/30"
           aria-label="Play video"
         >
           <span className="flex size-[4.5rem] items-center justify-center rounded-full bg-white/95 shadow-[0_8px_32px_rgba(0,0,0,0.45)] ring-1 ring-white/30 sm:size-20">

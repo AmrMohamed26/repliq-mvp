@@ -3,14 +3,20 @@ import ffmpeg from "fluent-ffmpeg";
 import { resolveFfmpegPath } from "@/lib/ffmpeg-bin";
 import { leadDir, posterThumbnailPath, emailThumbnailPath } from "@/lib/files";
 import { logger } from "@/lib/logger";
+import {
+  RENDER_HEIGHT,
+  RENDER_WIDTH,
+  REMOTION_SCALE,
+} from "@/lib/render-settings";
 
 ffmpeg.setFfmpegPath(resolveFfmpegPath());
 
 const THUMBNAIL_RETRIES = 2;
 
-/** Watch page / video poster — sharp when scaled up. */
-const POSTER_THUMB_WIDTH = 1280;
-/** Email + copy preview display width (image is 2× for retina). */
+/** Match rendered video pixels (2× headroom for retina at ~960px display width). */
+const POSTER_THUMB_WIDTH = Math.round(RENDER_WIDTH * REMOTION_SCALE);
+const POSTER_THUMB_HEIGHT = Math.round(RENDER_HEIGHT * REMOTION_SCALE);
+/** Email display 360px — export 2× for retina. */
 const EMAIL_THUMB_WIDTH = 720;
 
 function sleep(ms: number): Promise<void> {
@@ -21,14 +27,21 @@ function extractFrame(
   videoPath: string,
   outPath: string,
   width: number,
+  height: number | null,
   quality: number,
 ): Promise<void> {
+  const scale =
+    height != null
+      ? `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:black,format=yuv420p`
+      : `scale=${width}:-2:flags=lanczos`;
+
   return new Promise((resolve, reject) => {
     ffmpeg(videoPath)
       .outputOptions([
         "-ss 00:00:01",
         "-frames:v 1",
-        `-vf scale=${width}:-2`,
+        "-vf",
+        scale,
         "-q:v",
         String(quality),
         "-f image2",
@@ -46,7 +59,7 @@ export interface ThumbnailPaths {
 }
 
 /**
- * Extracts poster (1280w, no overlay) and email (720w, no overlay) JPEGs.
+ * Extracts full-resolution poster and 2× email JPEGs (no baked play icon).
  * Play icons are added in the UI / email HTML — not burned into the image.
  */
 export async function extractThumbnail(
@@ -70,8 +83,14 @@ export async function extractThumbnail(
     }
 
     try {
-      await extractFrame(videoPath, posterPath, POSTER_THUMB_WIDTH, 2);
-      await extractFrame(videoPath, emailPath, EMAIL_THUMB_WIDTH, 3);
+      await extractFrame(
+        videoPath,
+        posterPath,
+        POSTER_THUMB_WIDTH,
+        POSTER_THUMB_HEIGHT,
+        1,
+      );
+      await extractFrame(videoPath, emailPath, EMAIL_THUMB_WIDTH, null, 2);
       log.info(
         { posterPath, emailPath, attempt, status: "done" },
         "thumbnails extracted",
