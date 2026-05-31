@@ -114,10 +114,24 @@ function createWebRedisClient(): Redis {
 }
 
 let _webClient: Redis | null = null;
+let _webConnectPromise: Promise<Redis> | null = null;
 
 function resetWebRedisClient(): void {
   _webClient = null;
   globalRedis.__repliqWebRedis = undefined;
+  _webConnectPromise = null;
+}
+
+function isRedisInFlight(status: Redis["status"]): boolean {
+  return (
+    status === "connecting" ||
+    status === "connect" ||
+    status === "reconnecting"
+  );
+}
+
+function canStartConnect(status: Redis["status"]): boolean {
+  return status === "wait" || status === "end";
 }
 
 export function getWebRedis(): Redis {
@@ -174,8 +188,67 @@ function waitForRedisReady(redis: Redis, ms: number): Promise<void> {
   });
 }
 
+function connectTimeoutError(): Error {
+  return new Error(
+    "Redis connection timed out. Add REDIS_URL on Vercel (Upstash rediss:// URL) and redeploy.",
+  );
+}
+
+async function connectWebRedis(redis: Redis, depth: number): Promise<Redis> {
+  if (redis.status === "ready") {
+    return redis;
+  }
+
+  if (redis.status === "end" || redis.status === "close") {
+    resetWebRedisClient();
+    return ensureWebRedisConnected(depth + 1);
+  }
+
+  if (isRedisInFlight(redis.status)) {
+    await waitForRedisReady(redis, WEB_REDIS_CONNECT_MS);
+    return redis;
+  }
+
+  if (!canStartConnect(redis.status)) {
+    await waitForRedisReady(redis, WEB_REDIS_CONNECT_MS);
+    return redis;
+  }
+
+  try {
+    await Promise.race([
+      redis.connect(),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(connectTimeoutError()), WEB_REDIS_CONNECT_MS);
+      }),
+    ]);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+
+    if (/already connecting\/connected/i.test(msg)) {
+      await waitForRedisReady(redis, WEB_REDIS_CONNECT_MS);
+      return redis;
+    }
+
+    resetWebRedisClient();
+
+    if (
+      depth < 2 &&
+      (msg.includes("Connection is closed") ||
+        msg.includes("ECONNRESET") ||
+        msg.includes("ENOTCONN"))
+    ) {
+      return ensureWebRedisConnected(depth + 1);
+    }
+
+    throw err instanceof Error ? err : new Error(msg);
+  }
+
+  await waitForRedisReady(redis, WEB_REDIS_CONNECT_MS);
+  return redis;
+}
+
 /**
- * Serverless-safe: recreate client if socket closed; never reuse a dead connection.
+ * Serverless-safe: one in-flight connect per isolate; wait instead of double .connect().
  */
 export async function ensureWebRedisConnected(
   depth = 0,
@@ -198,60 +271,11 @@ export async function ensureWebRedisConnected(
     return redis;
   }
 
-  if (redis.status === "end" || redis.status === "close") {
-    resetWebRedisClient();
-    return ensureWebRedisConnected(depth + 1);
+  if (!_webConnectPromise) {
+    _webConnectPromise = connectWebRedis(redis, depth).finally(() => {
+      _webConnectPromise = null;
+    });
   }
 
-  try {
-    if (redis.status === "connecting" || redis.status === "connect") {
-      await waitForRedisReady(redis, WEB_REDIS_CONNECT_MS);
-      return redis;
-    }
-
-    await Promise.race([
-      redis.connect(),
-      new Promise<never>((_, reject) => {
-        setTimeout(
-          () =>
-            reject(
-              new Error(
-                "Redis connection timed out. Add REDIS_URL on Vercel (Upstash rediss:// URL) and redeploy.",
-              ),
-            ),
-          WEB_REDIS_CONNECT_MS,
-        );
-      }),
-    ]);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    debugRedisLog(
-      "lib/redis.ts:ensureWebRedisConnected",
-      "connect failed",
-      { status: redis.status, error: msg },
-      "H3",
-    );
-
-    resetWebRedisClient();
-
-    if (
-      depth < 2 &&
-      (msg.includes("Connection is closed") ||
-        msg.includes("ECONNRESET") ||
-        msg.includes("ENOTCONN"))
-    ) {
-      return ensureWebRedisConnected(depth + 1);
-    }
-
-    throw err instanceof Error ? err : new Error(msg);
-  }
-
-  debugRedisLog(
-    "lib/redis.ts:ensureWebRedisConnected",
-    "connected",
-    { status: redis.status },
-    "H2",
-  );
-
-  return redis;
+  return _webConnectPromise;
 }
