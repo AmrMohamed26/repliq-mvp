@@ -176,16 +176,130 @@ async function prepareScreenshotForRender(
   return outPath;
 }
 
+/**
+ * Prebuilt Docker bundles symlink `public/` → `/app/tmp/remotion-public`.
+ * Runtime must copy assets into that directory, not `TMP_DIR/remotion-public`.
+ */
+async function resolveBundlePublicDir(bundlePath: string): Promise<string> {
+  const publicEntry = path.join(bundlePath, "public");
+  try {
+    const resolved = await fs.realpath(publicEntry);
+    await fs.mkdir(resolved, { recursive: true });
+    return resolved;
+  } catch {
+    await fs.mkdir(remotionPublicDir, { recursive: true });
+    return remotionPublicDir;
+  }
+}
+
+async function probeVideoStream(
+  filePath: string,
+): Promise<{ codec?: string; pixFmt?: string }> {
+  const metadata = await new Promise<ffmpeg.FfprobeData>((resolve, reject) => {
+    ffmpeg.ffprobe(filePath, (err, data) => {
+      if (err) reject(err);
+      else resolve(data);
+    });
+  });
+  const video = metadata.streams.find((s) => s.codec_type === "video");
+  return { codec: video?.codec_name, pixFmt: video?.pix_fmt };
+}
+
+/** Remotion's headless Chromium only reliably plays H.264 yuv420p in MP4. */
+async function prepareTalkingHeadForRender(
+  sourcePath: string,
+  sessionId: string,
+  leadId: string,
+): Promise<string> {
+  const sourceStat = await fs.stat(sourcePath);
+  if (sourceStat.size < 1_000) {
+    throw new Error(
+      `talking head file is too small (${sourceStat.size} bytes): ${sourcePath}`,
+    );
+  }
+
+  const { codec, pixFmt } = await probeVideoStream(sourcePath);
+  const browserSafe =
+    codec === "h264" && (!pixFmt || pixFmt === "yuv420p");
+
+  // #region agent log
+  fetch("http://127.0.0.1:7489/ingest/874f54e3-af15-42bb-a33a-e094f9419f9f", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Debug-Session-Id": "b8d92c",
+    },
+    body: JSON.stringify({
+      sessionId: "b8d92c",
+      runId: "video-playback",
+      hypothesisId: "H2",
+      location: "render.ts:prepareTalkingHeadForRender",
+      message: "talking head codec probe",
+      data: {
+        leadId,
+        codec,
+        pixFmt,
+        browserSafe,
+        bytes: sourceStat.size,
+      },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
+
+  if (browserSafe) return sourcePath;
+
+  const outPath = path.join(leadDir(sessionId, leadId), "talking-head-remotion.mp4");
+  logger.info(
+    { leadId, codec, pixFmt, sourcePath },
+    "transcoding talking head for Remotion Chromium",
+  );
+
+  await new Promise<void>((resolve, reject) => {
+    ffmpeg(sourcePath)
+      .outputOptions([
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-profile:v",
+        "baseline",
+        "-preset",
+        "fast",
+        "-crf",
+        "23",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-movflags",
+        "+faststart",
+      ])
+      .output(outPath)
+      .on("end", () => resolve())
+      .on("error", (err) => reject(err))
+      .run();
+  });
+
+  const outStat = await fs.stat(outPath);
+  if (outStat.size < 1_000) {
+    throw new Error(
+      `talking head transcode produced invalid file (${outStat.size} bytes)`,
+    );
+  }
+  return outPath;
+}
+
 async function placeAsset(
+  publicDir: string,
   target: string,
   linkName: string,
 ): Promise<string> {
-  await fs.mkdir(remotionPublicDir, { recursive: true });
-  const linkPath = path.join(remotionPublicDir, linkName);
-  // Remove stale copied file if it exists (e.g. from a crashed previous run)
-  await fs.unlink(linkPath).catch(() => undefined);
-  await fs.copyFile(target, linkPath);
-  return linkPath;
+  await fs.mkdir(publicDir, { recursive: true });
+  const destPath = path.join(publicDir, linkName);
+  await fs.unlink(destPath).catch(() => undefined);
+  await fs.copyFile(target, destPath);
+  return destPath;
 }
 
 // ── Main export ──────────────────────────────────────────────────────────────
@@ -229,9 +343,34 @@ export async function renderVideo(input: RenderInput): Promise<string> {
   );
 
   const bundlePath = await getBundlePath();
+  const publicDir = await resolveBundlePublicDir(bundlePath);
+
+  // #region agent log
+  fetch("http://127.0.0.1:7489/ingest/874f54e3-af15-42bb-a33a-e094f9419f9f", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Debug-Session-Id": "b8d92c",
+    },
+    body: JSON.stringify({
+      sessionId: "b8d92c",
+      runId: "video-playback",
+      hypothesisId: "H1",
+      location: "render.ts:renderVideo",
+      message: "remotion public dir resolved",
+      data: { leadId, bundlePath, publicDir, tmpPublicDir: remotionPublicDir },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
 
   const preparedScreenshot = await prepareScreenshotForRender(
     screenshotPngPath,
+    sessionId,
+    leadId,
+  );
+  const preparedTalkingHead = await prepareTalkingHeadForRender(
+    talkingHeadPath,
     sessionId,
     leadId,
   );
@@ -239,12 +378,31 @@ export async function renderVideo(input: RenderInput): Promise<string> {
   const screenshotName = assetName(sessionId, leadId, "screenshot.jpg");
   const videoName = assetName(sessionId, leadId, "video.mp4");
 
-  const screenshotLink = await placeAsset(preparedScreenshot, screenshotName);
-  const videoLink = await placeAsset(talkingHeadPath, videoName);
+  const screenshotLink = await placeAsset(
+    publicDir,
+    preparedScreenshot,
+    screenshotName,
+  );
+  const videoLink = await placeAsset(publicDir, preparedTalkingHead, videoName);
   const [screenshotStat, videoStat] = await Promise.all([
     fs.lstat(screenshotLink),
     fs.lstat(videoLink),
   ]);
+
+  if (videoStat.size < 1_000) {
+    throw new Error(
+      `Remotion public video asset is empty (${videoStat.size} bytes at ${videoLink})`,
+    );
+  }
+  logger.info(
+    {
+      leadId,
+      publicDir,
+      screenshotBytes: screenshotStat.size,
+      videoBytes: videoStat.size,
+    },
+    "render assets placed in bundle public dir",
+  );
 
 
   try {

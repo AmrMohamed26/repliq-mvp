@@ -13,6 +13,8 @@ ENV RENDER_CONCURRENCY=1
 ENV REMOTION_CRF=22
 ENV RENDER_TIMEOUT_MS=1200000
 ENV REMOTION_BUNDLE_PATH=/app/.cache/remotion-bundle
+# Must match bundle-remotion publicDir so prebuilt `public/` symlink resolves correctly.
+ENV TMP_DIR=/app/tmp
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ffmpeg \
