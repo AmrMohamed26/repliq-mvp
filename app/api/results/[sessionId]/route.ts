@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { getSession, getLeads, getAllResults } from "@/lib/session";
+import { reconcileStaleResults } from "@/lib/reconcile-queue";
 import { ok, notFound, handleError } from "@/lib/api";
 
 type Params = { params: Promise<{ sessionId: string }> };
@@ -15,6 +16,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
     const session = await getSession(sessionId);
     if (!session) return notFound("Session not found");
+
+    await reconcileStaleResults(sessionId);
 
     const [leads, results] = await Promise.all([
       getLeads(sessionId),

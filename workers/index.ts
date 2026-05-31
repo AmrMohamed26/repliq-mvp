@@ -5,7 +5,7 @@ import { QUEUE_NAME, bullmqConnection } from "@/lib/queue";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { getBrowser, closeBrowser } from "./browser";
-import { processLead } from "./processors/lead.processor";
+import { processLead, syncLeadFailedFromJob } from "./processors/lead.processor";
 import { sweepOldSessions } from "@/lib/files";
 import { getCookieStatusReport } from "@/lib/site-cookies";
 import type { LeadJobData } from "@/types/job";
@@ -63,10 +63,10 @@ async function main() {
     {
       connection: bullmqConnection,
       concurrency: env.WORKER_CONCURRENCY,
-      /** Remotion renders can run 10–30+ min on small Railway instances. */
-      lockDuration: 60 * 60 * 1000,
-      stalledInterval: 120_000,
-      maxStalledCount: 2,
+      /** Long renders; worker renews the lock while the handler runs. */
+      lockDuration: 15 * 60 * 1000,
+      stalledInterval: 60_000,
+      maxStalledCount: 3,
       limiter: {
         // Max N jobs active at once — prevents Chromium context overload
         max: env.WORKER_CONCURRENCY,
@@ -84,6 +84,11 @@ async function main() {
       { jobId: job?.id, leadId: job?.data.leadId, err },
       "job failed",
     );
+    if (job?.data) {
+      void syncLeadFailedFromJob(job.data, err).catch((syncErr) =>
+        logger.warn({ syncErr }, "failed to sync lead failure to Redis"),
+      );
+    }
   });
 
   worker.on("error", (err) => {

@@ -93,6 +93,7 @@ async function getBundlePath(): Promise<string> {
     const result = await bundle({
       entryPoint,
       publicDir: remotionPublicDir,
+      outDir: path.join(env.TMP_DIR, "remotion-webpack"),
       symlinkPublicDir: true,
       onProgress: (p) => {
         const pct = Math.floor(p * 100);
@@ -263,6 +264,7 @@ export async function renderVideo(input: RenderInput): Promise<string> {
     });
 
     let lastRenderPct = -1;
+    let lastDebugPct = -1;
     const renderPromise = renderMedia({
       composition,
       serveUrl: bundlePath,
@@ -280,7 +282,8 @@ export async function renderVideo(input: RenderInput): Promise<string> {
           logger.info({ leadId, renderPct: pct }, "Remotion render progress");
         }
         // #region agent log
-        if (pct >= 25 && pct % 25 === 0 && pct !== lastRenderPct) {
+        if (pct >= 25 && pct % 25 === 0 && pct > lastDebugPct) {
+          lastDebugPct = pct;
           fetch(
             "http://127.0.0.1:7489/ingest/874f54e3-af15-42bb-a33a-e094f9419f9f",
             {

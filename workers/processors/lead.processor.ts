@@ -141,6 +141,34 @@ async function maybeFinalizeBatch(
  *   LeadResult shape: name, email, website, status, videoUrl, thumbnailUrl,
  *   error, startedAt, finishedAt, renderTime.
  */
+/** BullMQ `failed` event — sync Redis when the handler did not reach catch. */
+export async function syncLeadFailedFromJob(
+  data: LeadJobData,
+  err: unknown,
+): Promise<void> {
+  const { sessionId, leadId, name, email, website } = data;
+  const results = await getAllResults(sessionId);
+  const existing = results.find((r) => r.id === leadId);
+  if (existing?.status === "done" || existing?.status === "failed") return;
+
+  const errorMsg =
+    err instanceof Error ? err.message : String(err);
+  const finishedAt = Date.now();
+
+  await setLeadResult(sessionId, {
+    id: leadId,
+    name,
+    email,
+    website,
+    status: "failed",
+    error: errorMsg.split("\n")[0]?.trim() || "Job failed",
+    startedAt: existing?.startedAt ?? finishedAt,
+    finishedAt,
+  });
+
+  await maybeFinalizeBatch(sessionId, logger);
+}
+
 export async function processLead(
   job: Job<LeadJobData>,
   publisher: Redis,
