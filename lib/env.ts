@@ -3,8 +3,16 @@ import { z } from "zod";
 const emptyStringToUndefined = (value: unknown) =>
   value === "" ? undefined : value;
 
+/** Zod `.url()` rejects redis:// and rediss:// — validate Redis connection strings explicitly. */
+const redisUrlSchema = z
+  .string()
+  .refine((v) => /^rediss?:\/\/.+/i.test(v), {
+    message: "REDIS_URL must start with redis:// or rediss://",
+  })
+  .default("redis://localhost:6379");
+
 const serverSchema = z.object({
-  REDIS_URL: z.string().url().default("redis://localhost:6379"),
+  REDIS_URL: redisUrlSchema,
   SUPABASE_URL: z.preprocess(
     emptyStringToUndefined,
     z.string().url().optional(),

@@ -2,19 +2,76 @@ import Redis from "ioredis";
 import { env } from "./env";
 import { logger } from "./logger";
 
+const WEB_REDIS_CONNECT_MS = 8_000;
+
+const globalRedis = globalThis as typeof globalThis & {
+  __repliqWebRedis?: Redis;
+};
+
+function debugRedisLog(
+  location: string,
+  message: string,
+  data: Record<string, unknown>,
+  hypothesisId: string,
+): void {
+  // #region agent log
+  fetch("http://127.0.0.1:7489/ingest/874f54e3-af15-42bb-a33a-e094f9419f9f", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Debug-Session-Id": "b8d92c",
+    },
+    body: JSON.stringify({
+      sessionId: "b8d92c",
+      runId: "redis-serverless",
+      hypothesisId,
+      location,
+      message,
+      data,
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
+}
+
+function redisNeedsTls(url: string, hostname: string): boolean {
+  if (/^rediss:\/\//i.test(url)) return true;
+  // Upstash requires TLS even when the URL scheme is redis:// (redis-cli --tls).
+  return hostname.endsWith(".upstash.io");
+}
+
+function redisUrlMeta(): { usesTls: boolean; hostHint: string } {
+  try {
+    const u = new URL(
+      env.REDIS_URL.replace(/^redis:\/\//i, "http://").replace(
+        /^rediss:\/\//i,
+        "https://",
+      ),
+    );
+    return {
+      usesTls: redisNeedsTls(env.REDIS_URL, u.hostname),
+      hostHint: u.hostname,
+    };
+  } catch {
+    return {
+      usesTls: /^rediss:\/\//i.test(env.REDIS_URL),
+      hostHint: "invalid",
+    };
+  }
+}
+
 /**
- * Creates a fresh ioredis client configured for our env.
- * Used by both the Next.js process (queue producer, SSE, session reads)
- * and the worker process (queue consumer, progress publisher).
- *
- * Do NOT call this at module load-time in client components.
+ * BullMQ workers / SSE subscribers — long-lived connections.
+ * maxRetriesPerRequest: null is required by BullMQ.
  */
 export function createRedisClient(lazyConnect = false): Redis {
+  const { usesTls } = redisUrlMeta();
   const client = new Redis(env.REDIS_URL, {
-    maxRetriesPerRequest: lazyConnect ? 3 : null, // null required by BullMQ workers
+    maxRetriesPerRequest: lazyConnect ? 3 : null,
     enableReadyCheck: false,
     lazyConnect,
     connectTimeout: 10_000,
+    ...(usesTls ? { tls: {} } : {}),
     retryStrategy: lazyConnect
       ? (times) => (times > 3 ? null : Math.min(times * 200, 2_000))
       : undefined,
@@ -27,39 +84,174 @@ export function createRedisClient(lazyConnect = false): Redis {
   return client;
 }
 
-/** Singleton for the web process (session CRUD, SSE pub/sub). */
-let _webClient: Redis | null = null;
-export function getWebRedis(): Redis {
-  if (!_webClient) {
-    // lazyConnect — avoids blocking Next.js startup if Redis is down
-    _webClient = createRedisClient(true);
-  }
-  return _webClient;
+/** Vercel serverless — fresh client when the previous socket was closed. */
+function createWebRedisClient(): Redis {
+  const { usesTls } = redisUrlMeta();
+  const client = new Redis(env.REDIS_URL, {
+    maxRetriesPerRequest: 3,
+    enableReadyCheck: false,
+    lazyConnect: true,
+    connectTimeout: 10_000,
+    ...(usesTls ? { tls: {} } : {}),
+    retryStrategy: (times) =>
+      times > 4 ? null : Math.min(times * 200, 2_000),
+  });
+
+  client.on("error", (err) => {
+    logger.error({ err }, "Redis web client error");
+  });
+
+  client.on("close", () => {
+    debugRedisLog(
+      "lib/redis.ts:webClient",
+      "web redis connection closed",
+      { status: client.status },
+      "H1",
+    );
+  });
+
+  return client;
 }
 
-const WEB_REDIS_CONNECT_MS = 8_000;
+let _webClient: Redis | null = null;
+
+function resetWebRedisClient(): void {
+  _webClient = null;
+  globalRedis.__repliqWebRedis = undefined;
+}
+
+export function getWebRedis(): Redis {
+  const existing = _webClient ?? globalRedis.__repliqWebRedis;
+  if (existing && existing.status !== "end" && existing.status !== "close") {
+    return existing;
+  }
+
+  if (existing) {
+    debugRedisLog(
+      "lib/redis.ts:getWebRedis",
+      "discarding closed web redis client",
+      { priorStatus: existing.status },
+      "H1",
+    );
+    try {
+      existing.disconnect(false);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const client = createWebRedisClient();
+  _webClient = client;
+  globalRedis.__repliqWebRedis = client;
+  return client;
+}
+
+function waitForRedisReady(redis: Redis, ms: number): Promise<void> {
+  if (redis.status === "ready") return Promise.resolve();
+
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(
+        new Error(
+          "Redis connection timed out. On Vercel use Upstash REDIS_URL (rediss://…) in environment variables.",
+        ),
+      );
+    }, ms);
+
+    const onReady = () => {
+      clearTimeout(timer);
+      redis.off("error", onError);
+      resolve();
+    };
+    const onError = (err: Error) => {
+      clearTimeout(timer);
+      redis.off("ready", onReady);
+      reject(err);
+    };
+
+    redis.once("ready", onReady);
+    redis.once("error", onError);
+  });
+}
 
 /**
- * Serverless-safe: first Redis command must await connect or requests hang forever.
+ * Serverless-safe: recreate client if socket closed; never reuse a dead connection.
  */
-export async function ensureWebRedisConnected(): Promise<Redis> {
-  const redis = getWebRedis();
-  if (redis.status === "ready") return redis;
+export async function ensureWebRedisConnected(
+  depth = 0,
+): Promise<Redis> {
+  if (depth > 2) {
+    throw new Error("Redis could not reconnect after multiple attempts");
+  }
 
-  await Promise.race([
-    redis.connect(),
-    new Promise<never>((_, reject) => {
-      setTimeout(
-        () =>
-          reject(
-            new Error(
-              "Redis connection timed out. Add REDIS_URL on Vercel (e.g. Upstash) and redeploy.",
+  const redis = getWebRedis();
+  const meta = redisUrlMeta();
+
+  debugRedisLog(
+    "lib/redis.ts:ensureWebRedisConnected",
+    "ensure connect",
+    { status: redis.status, hostHint: meta.hostHint, usesTls: meta.usesTls, depth },
+    "H2",
+  );
+
+  if (redis.status === "ready") {
+    return redis;
+  }
+
+  if (redis.status === "end" || redis.status === "close") {
+    resetWebRedisClient();
+    return ensureWebRedisConnected(depth + 1);
+  }
+
+  try {
+    if (redis.status === "connecting" || redis.status === "connect") {
+      await waitForRedisReady(redis, WEB_REDIS_CONNECT_MS);
+      return redis;
+    }
+
+    await Promise.race([
+      redis.connect(),
+      new Promise<never>((_, reject) => {
+        setTimeout(
+          () =>
+            reject(
+              new Error(
+                "Redis connection timed out. Add REDIS_URL on Vercel (Upstash rediss:// URL) and redeploy.",
+              ),
             ),
-          ),
-        WEB_REDIS_CONNECT_MS,
-      );
-    }),
-  ]);
+          WEB_REDIS_CONNECT_MS,
+        );
+      }),
+    ]);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    debugRedisLog(
+      "lib/redis.ts:ensureWebRedisConnected",
+      "connect failed",
+      { status: redis.status, error: msg },
+      "H3",
+    );
+
+    resetWebRedisClient();
+
+    if (
+      depth < 2 &&
+      (msg.includes("Connection is closed") ||
+        msg.includes("ECONNRESET") ||
+        msg.includes("ENOTCONN"))
+    ) {
+      return ensureWebRedisConnected(depth + 1);
+    }
+
+    throw err instanceof Error ? err : new Error(msg);
+  }
+
+  debugRedisLog(
+    "lib/redis.ts:ensureWebRedisConnected",
+    "connected",
+    { status: redis.status },
+    "H2",
+  );
 
   return redis;
 }
