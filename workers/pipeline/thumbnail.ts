@@ -1,12 +1,10 @@
 import { unlink, rename } from "node:fs/promises";
 import ffmpeg from "fluent-ffmpeg";
-import ffmpegStatic from "ffmpeg-static";
+import { resolveFfmpegPath } from "@/lib/ffmpeg-bin";
 import { thumbnailPath } from "@/lib/files";
 import { logger } from "@/lib/logger";
 
-if (ffmpegStatic) {
-  ffmpeg.setFfmpegPath(ffmpegStatic);
-}
+ffmpeg.setFfmpegPath(resolveFfmpegPath());
 
 const THUMBNAIL_RETRIES = 2;
 

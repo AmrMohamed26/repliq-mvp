@@ -1,6 +1,6 @@
 import { writeFile, unlink } from "node:fs/promises";
 import ffmpeg from "fluent-ffmpeg";
-import ffmpegStatic from "ffmpeg-static";
+import { resolveFfmpegPath } from "@/lib/ffmpeg-bin";
 import { getPngDimensions } from "@/lib/png-dimensions";
 import { getCookiesForUrl } from "@/lib/site-cookies";
 import {
@@ -13,9 +13,7 @@ import {
   isUpworkUrl,
 } from "./upwork-screenshot";
 
-if (ffmpegStatic) {
-  ffmpeg.setFfmpegPath(ffmpegStatic);
-}
+ffmpeg.setFfmpegPath(resolveFfmpegPath());
 
 /** ScrapingBee often returns JPEG; normalize to PNG for crop + Remotion. */
 async function writeScreenshotBuffer(outPath: string, buf: Buffer): Promise<void> {

@@ -1,13 +1,11 @@
 import { readFile, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import ffmpeg from "fluent-ffmpeg";
-import ffmpegStatic from "ffmpeg-static";
+import { resolveFfmpegPath } from "@/lib/ffmpeg-bin";
 import { getPngDimensions } from "@/lib/png-dimensions";
 import { SCREENSHOT_VIEWPORT } from "./screenshot-viewport";
 
-if (ffmpegStatic) {
-  ffmpeg.setFfmpegPath(ffmpegStatic);
-}
+ffmpeg.setFfmpegPath(resolveFfmpegPath());
 
 const { width: VW, height: VH } = SCREENSHOT_VIEWPORT;
 

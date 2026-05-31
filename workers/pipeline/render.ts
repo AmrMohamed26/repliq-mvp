@@ -1,7 +1,7 @@
 import path from "path";
 import fs from "fs/promises";
 import ffmpeg from "fluent-ffmpeg";
-import ffmpegStatic from "ffmpeg-static";
+import { resolveFfmpegPath } from "@/lib/ffmpeg-bin";
 import { bundle } from "@remotion/bundler";
 import { renderMedia, selectComposition } from "@remotion/renderer";
 import { renderOutputPath, ensureLeadDir, leadDir } from "@/lib/files";
@@ -15,9 +15,7 @@ import {
   REMOTION_FRAME_CONCURRENCY,
 } from "@/lib/render-settings";
 
-if (ffmpegStatic) {
-  ffmpeg.setFfmpegPath(ffmpegStatic);
-}
+ffmpeg.setFfmpegPath(resolveFfmpegPath());
 
 const FPS = 30;
 const WIDTH = 1920;

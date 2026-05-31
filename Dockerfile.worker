@@ -4,12 +4,16 @@ FROM mcr.microsoft.com/playwright:v1.60.0-jammy
 
 WORKDIR /app
 
-# Browsers are preinstalled in /ms-playwright; skip postinstall download.
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 ENV NODE_ENV=production
+# ffmpeg-static install.js is skipped by npm ci --ignore-scripts; use system ffmpeg.
+ENV FFMPEG_BIN=/usr/bin/ffmpeg
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ffmpeg \
+  && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json ./
-# Browsers live in the base image — skip postinstall (scripts/ not copied yet).
 RUN npm ci --omit=dev --ignore-scripts
 
 COPY . .
