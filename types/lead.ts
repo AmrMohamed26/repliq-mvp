@@ -26,6 +26,8 @@ export interface LeadResult extends Lead {
   status: LeadStatus;
   videoUrl?: string;
   thumbnailUrl?: string;
+  /** High-res poster for watch UI (no baked play icon). */
+  posterThumbnailUrl?: string;
   /** Watch page share link (/v/[id]) for email and CSV when status=done. */
   shortUrl?: string;
   error?: string;

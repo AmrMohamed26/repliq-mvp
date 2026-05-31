@@ -22,6 +22,7 @@ export interface ProgressEvent {
   message?: string;
   videoUrl?: string;
   thumbnailUrl?: string;
+  posterThumbnailUrl?: string;
   error?: string;
   timestamp: number;
   startedAt?: number;

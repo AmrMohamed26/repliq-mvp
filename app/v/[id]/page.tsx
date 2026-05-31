@@ -25,15 +25,18 @@ export default async function WatchVideoPage({ params }: PageProps) {
     notFound();
   }
 
-  const thumb = index.thumbnailUrl?.startsWith("https://")
-    ? index.thumbnailUrl
-    : undefined;
+  const poster =
+    index.posterThumbnailUrl?.startsWith("https://")
+      ? index.posterThumbnailUrl
+      : index.thumbnailUrl?.startsWith("https://")
+        ? index.thumbnailUrl
+        : undefined;
 
   return (
     <VideoLanding
       name={index.name}
       videoUrl={index.videoUrl}
-      thumbnailUrl={thumb}
+      posterUrl={poster}
     />
   );
 }

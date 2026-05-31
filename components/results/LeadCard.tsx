@@ -63,7 +63,7 @@ export function LeadCard({ result, compact = false }: LeadCardProps) {
       : `/v/${result.id}`;
   const thumbnailUrl = resolveThumbnailUrlForDisplay(
     result.id,
-    result.thumbnailUrl,
+    result.posterThumbnailUrl ?? result.thumbnailUrl,
   );
 
   async function copyLink() {

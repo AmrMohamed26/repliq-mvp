@@ -253,7 +253,8 @@ export async function processLead(
   // ── Resume from checkpoint (BullMQ retry / stalled-job recovery) ───────────
   let screenshotPngPath: string | undefined;
   let videoPath: string | undefined;
-  let thumbPath: string | undefined;
+  let posterThumbPath: string | undefined;
+  let emailThumbPath: string | undefined;
 
   const cp: LeadCheckpoint | null = await getCheckpoint(sessionId, leadId);
   if (cp) {
@@ -269,13 +270,17 @@ export async function processLead(
     if (cp.videoPath && await fileExists(cp.videoPath)) {
       videoPath = cp.videoPath;
       if (cp.thumbPath && await fileExists(cp.thumbPath)) {
-        thumbPath = cp.thumbPath;
+        posterThumbPath = cp.thumbPath;
+      }
+      if (cp.emailThumbPath && await fileExists(cp.emailThumbPath)) {
+        emailThumbPath = cp.emailThumbPath;
       }
     } else {
       // Video file gone — also discard screenshot to force a clean re-run
       // (render may have depended on a screenshot that was then modified)
       videoPath = undefined;
-      thumbPath = undefined;
+      posterThumbPath = undefined;
+      emailThumbPath = undefined;
     }
   }
 
@@ -371,14 +376,16 @@ export async function processLead(
     }
 
     // ── Stage 3: Thumbnail ───────────────────────────────────────────────────
-    if (!thumbPath) {
-      thumbPath = await extractThumbnail(sessionId, leadId, videoPath);
-      // Update checkpoint to record thumbnail path for future resume
+    if (!posterThumbPath || !emailThumbPath) {
+      const thumbs = await extractThumbnail(sessionId, leadId, videoPath);
+      posterThumbPath = thumbs.posterPath;
+      emailThumbPath = thumbs.emailPath;
       await setCheckpoint(sessionId, leadId, {
         stage: "render_done",
         screenshotPath: screenshotPngPath,
         videoPath,
-        thumbPath,
+        thumbPath: posterThumbPath,
+        emailThumbPath,
         updatedAt: Date.now(),
       });
     }
@@ -388,11 +395,12 @@ export async function processLead(
     log.info({ stage: "upload", status: "starting" }, "uploading assets");
     await publish("uploading");
 
-    const { videoUrl, thumbnailUrl } = await uploadAssets(
+    const { videoUrl, thumbnailUrl, posterThumbnailUrl } = await uploadAssets(
       sessionId,
       leadId,
       videoPath,
-      thumbPath,
+      posterThumbPath,
+      emailThumbPath,
     );
 
     // ── Stage 5: Done ────────────────────────────────────────────────────────
@@ -403,6 +411,7 @@ export async function processLead(
     await publish("done", {
       videoUrl,
       thumbnailUrl,
+      posterThumbnailUrl,
       finishedAt,
       renderTime,
     });

@@ -151,6 +151,8 @@ export function useSSEProgress(
           status: ev.status as LeadResult["status"],
           videoUrl: ev.videoUrl ?? existing?.videoUrl,
           thumbnailUrl: ev.thumbnailUrl ?? existing?.thumbnailUrl,
+          posterThumbnailUrl:
+            ev.posterThumbnailUrl ?? existing?.posterThumbnailUrl,
           shortUrl: existing?.shortUrl,
           error: ev.error ?? existing?.error,
           startedAt: existing?.startedAt ?? ev.timestamp,

@@ -43,35 +43,14 @@ export async function GET(req: NextRequest, { params }: Params) {
     );
   }
 
-  const { name, thumbnailUrl, videoUrl } = index;
+  const { name, thumbnailUrl, posterThumbnailUrl, videoUrl } = index;
   const watchUrl = watchPageUrl(leadId, origin);
   const thumb = thumbnailUrlForEmail(leadId, thumbnailUrl, origin);
+  const poster =
+    posterThumbnailUrl?.startsWith("https://")
+      ? posterThumbnailUrl
+      : thumb;
   const video = videoUrl?.startsWith("https://") ? videoUrl : undefined;
-
-  // #region agent log
-  fetch("http://127.0.0.1:7489/ingest/874f54e3-af15-42bb-a33a-e094f9419f9f", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Debug-Session-Id": "b8d92c",
-    },
-    body: JSON.stringify({
-      sessionId: "b8d92c",
-      runId: "gmail-fix",
-      hypothesisId: "H-email-urls",
-      location: "app/api/email/[leadId]/route.ts:GET",
-      message: "email urls built",
-      data: {
-        leadId,
-        watchUrl: watchUrl.slice(0, 80),
-        thumbSrc: thumb?.slice(0, 80),
-        thumbIsProxy: Boolean(thumb?.includes("/api/media/thumb")),
-        origin: origin.slice(0, 60),
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
 
   const emailBody = buildEmailBody({ name, watchUrl, thumbnailUrl: thumb });
 
@@ -81,7 +60,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     const hint = escapeHtml(VIDEO_NEAR_HINT);
 
     const mediaBlock = video
-      ? `<video class="video-player" src="${video}" poster="${thumb ?? ""}" controls playsinline preload="metadata"></video>`
+      ? `<div class="video-shell"><video class="video-player" src="${video}" poster="${poster ?? ""}" controls playsinline preload="metadata"></video></div>`
       : thumb
         ? `<a href="${watchUrl}" target="_blank" rel="noopener" class="thumb-link"><img src="${thumb}" alt="" class="thumb-img" /><span class="thumb-play" aria-hidden="true"></span></a>`
         : `<a href="${watchUrl}" class="btn-book" target="_blank" rel="noopener">Watch video</a>`;
@@ -109,7 +88,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     }
     .page {
       width: 100%;
-      max-width: 520px;
+      max-width: min(960px, 92vw);
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -132,7 +111,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     }
     .media-wrap {
       width: 100%;
-      max-width: 440px;
+      max-width: min(960px, 92vw);
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -144,13 +123,21 @@ export async function GET(req: NextRequest, { params }: Params) {
       line-height: 1.35;
       color: #737373;
     }
+    .video-shell {
+      width: 100%;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: #000;
+      box-shadow: 0 24px 48px rgba(0,0,0,0.45);
+    }
     .video-player {
       display: block;
       width: 100%;
-      max-height: 70vh;
-      border-radius: 16px;
+      aspect-ratio: 16 / 9;
+      max-height: 75vh;
+      object-fit: contain;
       background: #000;
-      border: 1px solid rgba(255,255,255,0.1);
     }
     .thumb-link {
       position: relative;
@@ -171,20 +158,20 @@ export async function GET(req: NextRequest, { params }: Params) {
       left: 50%;
       top: 50%;
       transform: translate(-50%, -50%);
-      width: 56px;
-      height: 56px;
+      width: 72px;
+      height: 72px;
       border-radius: 50%;
       background: rgba(255,255,255,0.95);
-      box-shadow: 0 4px 24px rgba(0,0,0,0.35);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.2);
     }
     .thumb-play::after {
       content: "";
       position: absolute;
-      left: 54%;
+      left: 55%;
       top: 50%;
       transform: translate(-50%, -50%);
-      border: 10px solid transparent;
-      border-left: 17px solid #0a0a0a;
+      border: 12px solid transparent;
+      border-left: 20px solid #0a0a0a;
       border-right: 0;
     }
     .btn-book {

@@ -1,28 +1,36 @@
-import { unlink, rename } from "node:fs/promises";
+import { unlink } from "node:fs/promises";
 import ffmpeg from "fluent-ffmpeg";
 import { resolveFfmpegPath } from "@/lib/ffmpeg-bin";
-import { thumbnailPath } from "@/lib/files";
+import { leadDir, posterThumbnailPath, emailThumbnailPath } from "@/lib/files";
 import { logger } from "@/lib/logger";
 
 ffmpeg.setFfmpegPath(resolveFfmpegPath());
 
 const THUMBNAIL_RETRIES = 2;
 
+/** Watch page / video poster — sharp when scaled up. */
+const POSTER_THUMB_WIDTH = 1280;
+/** Email + copy preview display width (image is 2× for retina). */
+const EMAIL_THUMB_WIDTH = 720;
+
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-/** Email outreach width — keeps JPEG small for Gmail image proxy. */
-const EMAIL_THUMB_WIDTH = 360;
-
-function runThumbnail(videoPath: string, outPath: string): Promise<void> {
+function extractFrame(
+  videoPath: string,
+  outPath: string,
+  width: number,
+  quality: number,
+): Promise<void> {
   return new Promise((resolve, reject) => {
     ffmpeg(videoPath)
       .outputOptions([
         "-ss 00:00:01",
         "-frames:v 1",
-        `-vf scale=${EMAIL_THUMB_WIDTH}:-2`,
-        "-q:v 4",
+        `-vf scale=${width}:-2`,
+        "-q:v",
+        String(quality),
         "-f image2",
       ])
       .output(outPath)
@@ -32,49 +40,22 @@ function runThumbnail(videoPath: string, outPath: string): Promise<void> {
   });
 }
 
-/**
- * Burns a white play badge into the JPEG (ffmpeg draw filters only — no SVG;
- * ffmpeg-static does not ship an SVG decoder).
- */
-export async function addPlayBadgeToThumbnail(
-  thumbPath: string,
-  log?: { warn: (obj: object, msg: string) => void },
-): Promise<void> {
-  const outPath = `${thumbPath}.badged.jpg`;
-  const vf = [
-    "drawbox=x=(iw-56)/2:y=(ih-56)/2:w=56:h=56:color=white@0.92:t=fill",
-    "drawtext=text='>':fontsize=28:fontcolor=black:x=(w-text_w)/2+4:y=(h-text_h)/2",
-  ].join(",");
-
-  try {
-    await new Promise<void>((resolve, reject) => {
-      ffmpeg(thumbPath)
-        .outputOptions(["-vf", vf, "-q:v", "2", "-frames:v", "1"])
-        .output(outPath)
-        .on("end", () => resolve())
-        .on("error", (err) => reject(err))
-        .run();
-    });
-    await rename(outPath, thumbPath);
-  } catch (err) {
-    await unlink(outPath).catch(() => undefined);
-    log?.warn(
-      { err, thumbPath },
-      "play badge overlay failed — using plain thumbnail",
-    );
-  }
+export interface ThumbnailPaths {
+  posterPath: string;
+  emailPath: string;
 }
 
 /**
- * Extracts a JPEG thumbnail from the rendered MP4 at the 1-second mark,
- * then composites a play badge for email outreach.
+ * Extracts poster (1280w, no overlay) and email (720w, no overlay) JPEGs.
+ * Play icons are added in the UI / email HTML — not burned into the image.
  */
 export async function extractThumbnail(
   sessionId: string,
   leadId: string,
   videoPath: string,
-): Promise<string> {
-  const outPath = thumbnailPath(sessionId, leadId);
+): Promise<ThumbnailPaths> {
+  const posterPath = posterThumbnailPath(sessionId, leadId);
+  const emailPath = emailThumbnailPath(sessionId, leadId);
   const log = logger.child({ sessionId, leadId, stage: "thumbnail" });
 
   let lastError: unknown;
@@ -89,12 +70,17 @@ export async function extractThumbnail(
     }
 
     try {
-      await runThumbnail(videoPath, outPath);
-      await addPlayBadgeToThumbnail(outPath, log);
-      log.info({ outPath, attempt, status: "done" }, "thumbnail extracted");
-      return outPath;
+      await extractFrame(videoPath, posterPath, POSTER_THUMB_WIDTH, 2);
+      await extractFrame(videoPath, emailPath, EMAIL_THUMB_WIDTH, 3);
+      log.info(
+        { posterPath, emailPath, attempt, status: "done" },
+        "thumbnails extracted",
+      );
+      return { posterPath, emailPath };
     } catch (err) {
       lastError = err;
+      await unlink(posterPath).catch(() => undefined);
+      await unlink(emailPath).catch(() => undefined);
       log.warn({ attempt, status: "failed", err }, "thumbnail attempt failed");
     }
   }

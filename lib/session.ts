@@ -82,6 +82,7 @@ export async function getLeads(sessionId: string): Promise<Lead[]> {
 export interface VideoIndex {
   videoUrl: string;
   thumbnailUrl?: string;
+  posterThumbnailUrl?: string;
   shortUrl: string;
   sessionId: string;
   name: string;
@@ -124,12 +125,21 @@ export async function setLeadResult(
     const supabaseThumb = result.thumbnailUrl?.startsWith("https://")
       ? result.thumbnailUrl
       : undefined;
+    const supabasePoster = result.posterThumbnailUrl?.startsWith("https://")
+      ? result.posterThumbnailUrl
+      : undefined;
 
-    enriched = { ...result, shortUrl, thumbnailUrl: supabaseThumb };
+    enriched = {
+      ...result,
+      shortUrl,
+      thumbnailUrl: supabaseThumb,
+      posterThumbnailUrl: supabasePoster,
+    };
 
     const index: VideoIndex = {
       videoUrl: result.videoUrl,
       thumbnailUrl: supabaseThumb,
+      posterThumbnailUrl: supabasePoster,
       shortUrl,
       sessionId,
       name: result.name,
@@ -222,6 +232,7 @@ export interface LeadCheckpoint {
   screenshotPath?: string;
   videoPath?: string;
   thumbPath?: string;
+  emailThumbPath?: string;
   updatedAt: number;
 }
 

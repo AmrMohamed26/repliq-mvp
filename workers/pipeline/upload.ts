@@ -3,7 +3,10 @@ import { logger } from "@/lib/logger";
 
 export interface UploadResult {
   videoUrl: string;
+  /** Email outreach JPEG */
   thumbnailUrl: string;
+  /** Watch page poster JPEG */
+  posterThumbnailUrl: string;
 }
 
 interface WarnLogger {
@@ -17,10 +20,6 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-/**
- * Retries an async operation up to `maxAttempts` times with exponential backoff.
- * Delay sequence: baseMs, 2*baseMs, 4*baseMs … capped at 30 s.
- */
 async function withRetry<T>(
   fn: () => Promise<T>,
   maxAttempts: number,
@@ -53,31 +52,22 @@ async function withRetry<T>(
   );
 }
 
-/**
- * Uploads the rendered video + thumbnail through the storage abstraction.
- *
- * Each asset is retried independently — video and thumbnail can fail and
- * recover separately (storage provider transient failures).
- *
- * Retry strategy: 3 attempts, exponential backoff (1 s, 2 s, 4 s).
- *
- * Returns public HTTPS URLs only. Provider config errors are surfaced as
- * per-lead failures so CSV exports never contain internal/local paths.
- */
 export async function uploadAssets(
   sessionId: string,
   leadId: string,
   videoPath: string,
-  thumbPath: string,
+  posterThumbPath: string,
+  emailThumbPath: string,
 ): Promise<UploadResult> {
   const log = logger.child({ sessionId, leadId, stage: "upload" });
 
   const videoKey = `videos/${sessionId}/${leadId}.mp4`;
-  const thumbKey = `thumbs/${sessionId}/${leadId}.jpg`;
+  const posterKey = `thumbs/${sessionId}/${leadId}-poster.jpg`;
+  const emailKey = `thumbs/${sessionId}/${leadId}-email.jpg`;
 
-  log.info({ videoKey, thumbKey, status: "starting" }, "uploading assets to storage");
+  log.info({ videoKey, posterKey, emailKey, status: "starting" }, "uploading assets");
 
-  const [videoUrl, thumbnailUrl] = await Promise.all([
+  const [videoUrl, posterThumbnailUrl, thumbnailUrl] = await Promise.all([
     withRetry(
       () => uploadFile(videoKey, videoPath, "video/mp4"),
       UPLOAD_MAX_ATTEMPTS,
@@ -86,14 +76,24 @@ export async function uploadAssets(
       log,
     ),
     withRetry(
-      () => uploadFile(thumbKey, thumbPath, "image/jpeg"),
+      () => uploadFile(posterKey, posterThumbPath, "image/jpeg"),
       UPLOAD_MAX_ATTEMPTS,
       UPLOAD_BASE_DELAY_MS,
-      "thumbnail upload",
+      "poster thumbnail upload",
+      log,
+    ),
+    withRetry(
+      () => uploadFile(emailKey, emailThumbPath, "image/jpeg"),
+      UPLOAD_MAX_ATTEMPTS,
+      UPLOAD_BASE_DELAY_MS,
+      "email thumbnail upload",
       log,
     ),
   ]);
 
-  log.info({ videoUrl, thumbnailUrl, status: "done" }, "assets uploaded");
-  return { videoUrl, thumbnailUrl };
+  log.info(
+    { videoUrl, posterThumbnailUrl, thumbnailUrl, status: "done" },
+    "assets uploaded",
+  );
+  return { videoUrl, thumbnailUrl, posterThumbnailUrl };
 }

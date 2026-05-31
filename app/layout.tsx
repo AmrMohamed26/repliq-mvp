@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
-import { CookieStatusBanner } from "@/components/CookieStatusBanner";
 import { Toaster } from "@/components/ui/sonner";
 
 const inter = Inter({
@@ -49,7 +48,6 @@ export default function RootLayout({
         )}
       >
         <div className="pointer-events-none fixed inset-0 -z-10 bg-grid-fade" />
-        <CookieStatusBanner />
         {children}
         <Toaster />
       </body>

@@ -35,8 +35,19 @@ export function renderOutputPath(sessionId: string, leadId: string): string {
   return join(leadDir(sessionId, leadId), "render.mp4");
 }
 
+/** @deprecated Use posterThumbnailPath — kept for checkpoint compatibility. */
 export function thumbnailPath(sessionId: string, leadId: string): string {
-  return join(leadDir(sessionId, leadId), "thumb.jpg");
+  return posterThumbnailPath(sessionId, leadId);
+}
+
+/** High-res poster for /v watch page (no baked play icon). */
+export function posterThumbnailPath(sessionId: string, leadId: string): string {
+  return join(leadDir(sessionId, leadId), "thumb-poster.jpg");
+}
+
+/** Email / copy outreach thumbnail (no baked play icon). */
+export function emailThumbnailPath(sessionId: string, leadId: string): string {
+  return join(leadDir(sessionId, leadId), "thumb-email.jpg");
 }
 
 // ── Directory creation ─────────────────────────────────────────────────────

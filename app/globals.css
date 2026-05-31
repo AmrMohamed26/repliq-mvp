@@ -94,4 +94,9 @@
     );
     background-size: 4px 4px;
   }
+
+  /* Copy Email preview — matches outreach HTML play overlay */
+  .email-preview-root table[role="presentation"] a[target="_blank"] div[style*="border-radius:50%"] {
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  }
 }
