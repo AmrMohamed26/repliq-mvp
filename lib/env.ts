@@ -12,7 +12,7 @@ const redisUrlSchema = z
   .default("redis://localhost:6379");
 
 const serverSchema = z.object({
-  REDIS_URL: redisUrlSchema,
+  REDIS_URL: z.preprocess(emptyStringToUndefined, redisUrlSchema),
   SUPABASE_URL: z.preprocess(
     emptyStringToUndefined,
     z.string().url().optional(),
@@ -94,12 +94,41 @@ const serverEnvInput = {
   LOG_LEVEL: process.env.LOG_LEVEL,
 };
 
-export const env = serverSchema.parse(serverEnvInput);
+let _env: z.infer<typeof serverSchema> | undefined;
 
-export const publicEnv = clientSchema.parse({
-  NEXT_PUBLIC_APP_NAME: process.env.NEXT_PUBLIC_APP_NAME,
-  NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+/** Parsed on first access so `next build` does not require REDIS_URL at compile time. */
+function loadEnv(): z.infer<typeof serverSchema> {
+  if (!_env) {
+    _env = serverSchema.parse(serverEnvInput);
+  }
+  return _env;
+}
+
+export const env = new Proxy({} as z.infer<typeof serverSchema>, {
+  get(_target, prop: string | symbol) {
+    const parsed = loadEnv();
+    return parsed[prop as keyof typeof parsed];
+  },
 });
 
-export type ServerEnv = typeof env;
-export type PublicEnv = typeof publicEnv;
+let _publicEnv: z.infer<typeof clientSchema> | undefined;
+
+function loadPublicEnv(): z.infer<typeof clientSchema> {
+  if (!_publicEnv) {
+    _publicEnv = clientSchema.parse({
+      NEXT_PUBLIC_APP_NAME: process.env.NEXT_PUBLIC_APP_NAME,
+      NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+    });
+  }
+  return _publicEnv;
+}
+
+export const publicEnv = new Proxy({} as z.infer<typeof clientSchema>, {
+  get(_target, prop: string | symbol) {
+    const parsed = loadPublicEnv();
+    return parsed[prop as keyof typeof parsed];
+  },
+});
+
+export type ServerEnv = z.infer<typeof serverSchema>;
+export type PublicEnv = z.infer<typeof clientSchema>;

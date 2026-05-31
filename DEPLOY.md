@@ -12,8 +12,8 @@ git push origin main
 
 - Project linked to this repo, branch `main`.
 - After push, wait for the deployment to finish (Vercel dashboard → Deployments).
-- Required env (same as local `.env` where applicable):
-  - `REDIS_URL` (Upstash — **must match Railway**)
+- Required env for **Production and Preview** (Settings → Environment Variables):
+  - `REDIS_URL` (Upstash — **must match Railway**; empty value breaks runtime, not build)
   - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_BUCKET`, `SUPABASE_PUBLIC_BASE_URL`
   - `NEXT_PUBLIC_APP_URL=https://repliq-mvp.vercel.app`
 

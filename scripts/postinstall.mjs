@@ -6,9 +6,13 @@
  */
 import { execSync } from "node:child_process";
 
-if (process.env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD === "1") {
+if (
+  process.env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD === "1" ||
+  process.env.VERCEL === "1" ||
+  process.env.VERCEL_ENV
+) {
   console.log(
-    "postinstall: skipping Playwright Chromium (PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1)",
+    "postinstall: skipping Playwright Chromium (Vercel / PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD)",
   );
   process.exit(0);
 }
