@@ -9,7 +9,8 @@ ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 ENV NODE_ENV=production
 
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+# Browsers live in the base image — skip postinstall (scripts/ not copied yet).
+RUN npm ci --omit=dev --ignore-scripts
 
 COPY . .
 
