@@ -7,6 +7,10 @@ import {
   copyRichEmailHtml,
   type CopyEmailResult,
 } from "@/lib/copy-email-clipboard";
+import {
+  EmailDiagnosticsPanel,
+  type EmailDiagnosticsMeta,
+} from "@/components/email/EmailDiagnosticsPanel";
 
 interface CopyEmailPanelProps {
   leadId: string;
@@ -19,8 +23,28 @@ export function CopyEmailPanel({ leadId, name }: CopyEmailPanelProps) {
   const [copying, setCopying] = useState(false);
   const [copied, setCopied] = useState(false);
   const [lastMode, setLastMode] = useState<CopyEmailResult | null>(null);
+  const [diagMeta, setDiagMeta] = useState<EmailDiagnosticsMeta | null>(null);
+  const [diagMetaError, setDiagMetaError] = useState(false);
 
   const firstName = firstNameFromName(name);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/email/${leadId}/diagnostics`)
+      .then((res) => {
+        if (!res.ok) throw new Error("diag failed");
+        return res.json() as Promise<EmailDiagnosticsMeta>;
+      })
+      .then((data) => {
+        if (!cancelled) setDiagMeta(data);
+      })
+      .catch(() => {
+        if (!cancelled) setDiagMetaError(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [leadId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,7 +80,7 @@ export function CopyEmailPanel({ leadId, name }: CopyEmailPanelProps) {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-[#0a0a0a] px-6 py-16 text-center text-[#fafafa]">
+    <div className="flex min-h-screen flex-col items-center bg-[#0a0a0a] px-6 py-16 text-center text-[#fafafa]">
       <div className="flex w-full max-w-lg flex-col items-center gap-6">
         <div className="flex flex-col items-center gap-2">
           <p className="m-0 text-sm text-[#737373]">Outreach email for</p>
@@ -109,6 +133,15 @@ export function CopyEmailPanel({ leadId, name }: CopyEmailPanelProps) {
           <p className="m-0 text-xs text-amber-400/90">
             Copied as plain text only — use Chrome on desktop for the thumbnail.
           </p>
+        )}
+
+        {emailHtml && (
+          <EmailDiagnosticsPanel
+            leadId={leadId}
+            emailHtml={emailHtml}
+            meta={diagMeta}
+            metaError={diagMetaError}
+          />
         )}
       </div>
     </div>

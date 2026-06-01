@@ -60,6 +60,14 @@ export function watchPageUrl(leadId: string, requestOrigin?: string): string {
   return `${getAppBaseUrl(requestOrigin)}/v/${leadId}`;
 }
 
+/** Thumbnail <a href> in email — /go/[leadId] redirects to watch page. */
+export function emailImageClickUrl(
+  leadId: string,
+  requestOrigin?: string,
+): string {
+  return `${getAppBaseUrl(requestOrigin)}/go/${leadId}`;
+}
+
 /**
  * Thumbnail URL for <img> in outbound email.
  * Uses our proxy on a public app host (Gmail-friendly headers, no Supabase x-robots-tag).

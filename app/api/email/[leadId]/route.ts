@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getVideoIndex } from "@/lib/session";
 import { buildEmailBody } from "@/lib/email";
 import {
+  emailImageClickUrl,
   requestOriginFromNextRequest,
   watchPageUrl,
 } from "@/lib/app-url";
@@ -52,7 +53,12 @@ export async function GET(req: NextRequest, { params }: Params) {
       : thumb;
   const video = videoUrl?.startsWith("https://") ? videoUrl : undefined;
 
-  const emailBody = buildEmailBody({ name, watchUrl, thumbnailUrl: thumb });
+  const emailBody = buildEmailBody({
+    name,
+    watchUrl,
+    imageClickUrl: emailImageClickUrl(leadId, origin),
+    thumbnailUrl: thumb,
+  });
 
   if (preview) {
     const firstName = escapeHtml(firstNameFromName(name));
