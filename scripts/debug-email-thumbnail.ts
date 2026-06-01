@@ -3,10 +3,10 @@
  * Usage: npx tsx scripts/debug-email-thumbnail.ts <leadId>
  */
 import "dotenv/config";
-import { getVideoIndex } from "../lib/session.ts";
-import { buildEmailBody } from "../lib/email.ts";
-import { thumbnailUrlForEmail } from "../lib/media-url.ts";
-import { watchPageUrl } from "../lib/app-url.ts";
+import { getVideoIndex } from "../lib/session";
+import { buildEmailBody } from "../lib/email";
+import { thumbnailUrlForEmail } from "../lib/media-url";
+import { watchPageUrl } from "../lib/app-url";
 
 const leadId = process.argv[2];
 if (!leadId) {
