@@ -101,7 +101,41 @@ export async function reconcileStaleResults(
       continue;
     }
 
-    if (r.status === "pending") continue;
+    if (r.status === "pending") {
+      if (!activeLeadIds.has(r.id)) {
+        await setLeadResult(sessionId, {
+          ...r,
+          status: "failed",
+          error:
+            "Job never started (worker offline or queue empty). Run npm run worker:dev locally, or restart the Railway worker, then start a new batch.",
+          finishedAt: Date.now(),
+        });
+        fixed++;
+        // #region agent log
+        fetch("http://127.0.0.1:7489/ingest/874f54e3-af15-42bb-a33a-e094f9419f9f", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Debug-Session-Id": "b8d92c",
+          },
+          body: JSON.stringify({
+            sessionId: "b8d92c",
+            runId: "pending-fix",
+            hypothesisId: "H1",
+            location: "lib/reconcile-queue.ts",
+            message: "reconciled orphan pending (no queue job)",
+            data: { sessionId, leadId: r.id },
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
+        // #endregion
+        logger.info(
+          { sessionId, leadId: r.id },
+          "reconciled orphan pending lead (no queue job)",
+        );
+      }
+      continue;
+    }
 
     const started = r.startedAt ?? 0;
     if (started > 0 && Date.now() - started >= ORPHAN_MS) {
