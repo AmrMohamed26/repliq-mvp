@@ -6,7 +6,7 @@ import "dotenv/config";
 import { getVideoIndex } from "../lib/session";
 import { buildEmailBody } from "../lib/email";
 import { thumbnailUrlForEmail } from "../lib/media-url";
-import { emailImageClickUrl, watchPageUrl } from "../lib/app-url";
+import { watchPageUrl } from "../lib/app-url";
 
 const leadId = process.argv[2];
 if (!leadId) {
@@ -39,7 +39,6 @@ const watchUrl = watchPageUrl(leadId, process.env.NEXT_PUBLIC_APP_URL);
 const html = buildEmailBody({
   name: index.name,
   watchUrl,
-  imageClickUrl: emailImageClickUrl(leadId, process.env.NEXT_PUBLIC_APP_URL),
   thumbnailUrl: emailUrl,
 });
 

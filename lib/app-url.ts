@@ -60,14 +60,6 @@ export function watchPageUrl(leadId: string, requestOrigin?: string): string {
   return `${getAppBaseUrl(requestOrigin)}/v/${leadId}`;
 }
 
-/** Thumbnail <a href> in email — /go/[leadId] redirects to watch page. */
-export function emailImageClickUrl(
-  leadId: string,
-  requestOrigin?: string,
-): string {
-  return `${getAppBaseUrl(requestOrigin)}/go/${leadId}`;
-}
-
 /**
  * Thumbnail URL for <img> in outbound email.
  * Uses our proxy on a public app host (Gmail-friendly headers, no Supabase x-robots-tag).
@@ -79,6 +71,16 @@ export function emailThumbnailProxyUrl(
   const pub = getPublicAppBaseUrl(requestOrigin);
   if (!pub) return undefined;
   return `${pub}/api/media/thumb/${leadId}`;
+}
+
+/** Talking-head frame for email avatar overlay (Gmail-friendly proxy). */
+export function emailAvatarProxyUrl(
+  leadId: string,
+  requestOrigin?: string,
+): string | undefined {
+  const pub = getPublicAppBaseUrl(requestOrigin);
+  if (!pub) return undefined;
+  return `${pub}/api/media/avatar/${leadId}`;
 }
 
 export function requestOriginFromNextRequest(req: {

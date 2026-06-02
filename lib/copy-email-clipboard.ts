@@ -100,6 +100,32 @@ export async function copyRichEmailHtml(html: string): Promise<CopyEmailResult> 
     throw new Error("Empty email HTML");
   }
 
+  // #region agent log
+  fetch("http://127.0.0.1:7489/ingest/874f54e3-af15-42bb-a33a-e094f9419f9f", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Debug-Session-Id": "b8d92c",
+    },
+    body: JSON.stringify({
+      sessionId: "b8d92c",
+      runId: "play-overlay-mockup",
+      hypothesisId: "H4",
+      location: "lib/copy-email-clipboard.ts:copyRichEmailHtml",
+      message: "clipboard copy input markers",
+      data: {
+        fragmentLen: fragment.length,
+        hasImg: /<img\s/i.test(fragment),
+        imgCount: (fragment.match(/<img\s/gi) ?? []).length,
+        hasPlayOverlay: /rgba\(0,0,0,0\.55\)/.test(fragment),
+        hasAvatarImg: /\/api\/media\/avatar\//.test(fragment),
+        hasBackgroundImage: /background-image:url\(/i.test(fragment),
+      },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
+
   const plain = stripHtmlToPlain(fragment) || "Watch your personalized video";
 
   if (await copyViaClipboardApi(fragment, plain)) {
