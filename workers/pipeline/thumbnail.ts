@@ -13,9 +13,23 @@ ffmpeg.setFfmpegPath(resolveFfmpegPath());
 
 const THUMBNAIL_RETRIES = 2;
 
-/** Match rendered video pixels (2× headroom for retina at ~960px display width). */
-const POSTER_THUMB_WIDTH = Math.round(RENDER_WIDTH * REMOTION_SCALE);
-const POSTER_THUMB_HEIGHT = Math.round(RENDER_HEIGHT * REMOTION_SCALE);
+/**
+ * Watch page layout is max 960px wide (VideoPlayer sizes). Retina (~2×) needs ~1920px
+ * source; Railway REMOTION_SCALE=0.75 renders video at 1440×810 only — poster must
+ * export at full composition size (upscale in ffmpeg) so the browser is not upscaling
+ * a 1440px file to ~1920 device pixels.
+ */
+const WATCH_POSTER_LAYOUT_MAX_PX = 960;
+const POSTER_THUMB_WIDTH = Math.min(
+  RENDER_WIDTH,
+  Math.max(
+    Math.round(RENDER_WIDTH * REMOTION_SCALE),
+    WATCH_POSTER_LAYOUT_MAX_PX * 2,
+  ),
+);
+const POSTER_THUMB_HEIGHT = Math.round(
+  (POSTER_THUMB_WIDTH * RENDER_HEIGHT) / RENDER_WIDTH,
+);
 /** Email display 360px — export 2× for retina. */
 const EMAIL_THUMB_WIDTH = 720;
 
@@ -92,7 +106,15 @@ export async function extractThumbnail(
       );
       await extractFrame(videoPath, emailPath, EMAIL_THUMB_WIDTH, null, 2);
       log.info(
-        { posterPath, emailPath, attempt, status: "done" },
+        {
+          posterPath,
+          emailPath,
+          attempt,
+          posterW: POSTER_THUMB_WIDTH,
+          posterH: POSTER_THUMB_HEIGHT,
+          renderScale: REMOTION_SCALE,
+          status: "done",
+        },
         "thumbnails extracted",
       );
       return { posterPath, emailPath };
