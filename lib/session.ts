@@ -113,6 +113,13 @@ export async function getVideoIndex(
     if (!index.leadId) {
       index.leadId = leadId;
     }
+    if (!index.slug && index.sessionId) {
+      const leads = await getLeads(index.sessionId);
+      const lead = leads.find((l) => l.id === leadId);
+      if (lead?.slug) {
+        index.slug = lead.slug;
+      }
+    }
     return index;
   } catch {
     return null;
@@ -165,38 +172,39 @@ export async function setLeadResult(
 
   let enriched = await attachSlugFromSession(sessionId, result);
 
-  if (result.status === "done" && result.videoUrl?.startsWith("https://")) {
-    if (result.slug) {
-      await registerSlugMapping(result.slug, result.id);
+  if (enriched.status === "done" && enriched.videoUrl?.startsWith("https://")) {
+    if (enriched.slug) {
+      await registerSlugMapping(enriched.slug, enriched.id);
     }
-    const shortUrl = watchPageUrl({ id: result.id, slug: result.slug });
-    const supabaseThumb = result.thumbnailUrl?.startsWith("https://")
-      ? result.thumbnailUrl
+    const shortUrl = watchPageUrl({ id: enriched.id, slug: enriched.slug });
+
+    const supabaseThumb = enriched.thumbnailUrl?.startsWith("https://")
+      ? enriched.thumbnailUrl
       : undefined;
-    const supabasePoster = result.posterThumbnailUrl?.startsWith("https://")
-      ? result.posterThumbnailUrl
+    const supabasePoster = enriched.posterThumbnailUrl?.startsWith("https://")
+      ? enriched.posterThumbnailUrl
       : undefined;
 
     enriched = {
-      ...result,
+      ...enriched,
       shortUrl,
       thumbnailUrl: supabaseThumb,
       posterThumbnailUrl: supabasePoster,
     };
 
     const index: VideoIndex = {
-      videoUrl: result.videoUrl,
+      videoUrl: enriched.videoUrl as string,
       thumbnailUrl: supabaseThumb,
       posterThumbnailUrl: supabasePoster,
       shortUrl,
       sessionId,
-      leadId: result.id,
-      slug: result.slug,
-      name: result.name,
-      website: result.website,
+      leadId: enriched.id,
+      slug: enriched.slug,
+      name: enriched.name,
+      website: enriched.website,
     };
     await redis.set(
-      videoIndexKey(result.id),
+      videoIndexKey(enriched.id),
       JSON.stringify(index),
       "EX",
       TTL_SEC,
@@ -214,6 +222,13 @@ async function repairStoredResult(result: LeadResult): Promise<LeadResult> {
 
   if (!repaired.slug && index?.slug) {
     repaired = { ...repaired, slug: index.slug };
+  }
+  if (!repaired.slug && index?.sessionId) {
+    const leads = await getLeads(index.sessionId);
+    const lead = leads.find((l) => l.id === result.id);
+    if (lead?.slug) {
+      repaired = { ...repaired, slug: lead.slug };
+    }
   }
 
   const storedThumb = repaired.thumbnailUrl;
