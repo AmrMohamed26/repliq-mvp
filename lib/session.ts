@@ -1,6 +1,11 @@
 import { nanoid } from "nanoid";
 import { ensureWebRedisConnected } from "./redis";
 import { watchPageUrl } from "./app-url";
+import {
+  allocateUniqueSlug,
+  registerSlugMapping,
+  resolveLeadId,
+} from "./lead-slug";
 import { isLegacyShareUrl } from "./media-url";
 import type { Session, SessionStage } from "@/types/session";
 import type { Lead } from "@/types/lead";
@@ -62,8 +67,9 @@ export async function setStage(
 
 export async function setLeads(sessionId: string, leads: Lead[]): Promise<void> {
   const redis = await ensureWebRedisConnected();
-  await redis.set(leadsKey(sessionId), JSON.stringify(leads), "EX", TTL_SEC);
-  await updateSession(sessionId, { leads, stage: "csv_uploaded" });
+  const withSlugs = await ensureLeadSlugs(leads);
+  await redis.set(leadsKey(sessionId), JSON.stringify(withSlugs), "EX", TTL_SEC);
+  await updateSession(sessionId, { leads: withSlugs, stage: "csv_uploaded" });
 }
 
 export async function getLeads(sessionId: string): Promise<Lead[]> {
@@ -85,6 +91,8 @@ export interface VideoIndex {
   posterThumbnailUrl?: string;
   shortUrl: string;
   sessionId: string;
+  leadId: string;
+  slug?: string;
   name: string;
   website: string;
 }
@@ -93,15 +101,42 @@ function videoIndexKey(leadId: string): string {
   return `video:${leadId}`;
 }
 
-export async function getVideoIndex(leadId: string): Promise<VideoIndex | null> {
+export async function getVideoIndex(
+  publicId: string,
+): Promise<VideoIndex | null> {
+  const leadId = await resolveLeadId(publicId);
   const redis = await ensureWebRedisConnected();
   const raw = await redis.get(videoIndexKey(leadId));
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as VideoIndex;
+    const index = JSON.parse(raw) as VideoIndex;
+    if (!index.leadId) {
+      index.leadId = leadId;
+    }
+    return index;
   } catch {
     return null;
   }
+}
+
+async function ensureLeadSlugs(leads: Lead[]): Promise<Lead[]> {
+  const batchReserved = new Set<string>();
+  const withSlugs: Lead[] = [];
+
+  for (const lead of leads) {
+    if (lead.slug) {
+      batchReserved.add(lead.slug);
+      await registerSlugMapping(lead.slug, lead.id);
+      withSlugs.push(lead);
+      continue;
+    }
+
+    const slug = await allocateUniqueSlug(lead.name, batchReserved);
+    await registerSlugMapping(slug, lead.id);
+    withSlugs.push({ ...lead, slug });
+  }
+
+  return withSlugs;
 }
 
 /**
@@ -112,16 +147,29 @@ export async function getVideoIndex(leadId: string): Promise<VideoIndex | null> 
  *  1. shortUrl is the public watch page (/v/[leadId]) for email links and CSV.
  *  2. videoUrl/thumbnailUrl remain direct Supabase assets for download and proxy.
  */
+async function attachSlugFromSession(
+  sessionId: string,
+  result: LeadResult,
+): Promise<LeadResult> {
+  if (result.slug) return result;
+  const leads = await getLeads(sessionId);
+  const lead = leads.find((l) => l.id === result.id);
+  return lead?.slug ? { ...result, slug: lead.slug } : result;
+}
+
 export async function setLeadResult(
   sessionId: string,
   result: LeadResult,
 ): Promise<void> {
   const redis = await ensureWebRedisConnected();
 
-  let enriched = result;
+  let enriched = await attachSlugFromSession(sessionId, result);
 
   if (result.status === "done" && result.videoUrl?.startsWith("https://")) {
-    const shortUrl = watchPageUrl(result.id);
+    if (result.slug) {
+      await registerSlugMapping(result.slug, result.id);
+    }
+    const shortUrl = watchPageUrl({ id: result.id, slug: result.slug });
     const supabaseThumb = result.thumbnailUrl?.startsWith("https://")
       ? result.thumbnailUrl
       : undefined;
@@ -142,6 +190,8 @@ export async function setLeadResult(
       posterThumbnailUrl: supabasePoster,
       shortUrl,
       sessionId,
+      leadId: result.id,
+      slug: result.slug,
       name: result.name,
       website: result.website,
     };
@@ -162,6 +212,10 @@ async function repairStoredResult(result: LeadResult): Promise<LeadResult> {
   let repaired = result;
   const index = await getVideoIndex(result.id);
 
+  if (!repaired.slug && index?.slug) {
+    repaired = { ...repaired, slug: index.slug };
+  }
+
   const storedThumb = repaired.thumbnailUrl;
   if (storedThumb?.includes("/api/media/thumb")) {
     const supabase = index?.thumbnailUrl?.startsWith("https://")
@@ -180,7 +234,7 @@ async function repairStoredResult(result: LeadResult): Promise<LeadResult> {
       index.videoUrl
     : undefined;
 
-  const watch = watchPageUrl(repaired.id);
+  const watch = watchPageUrl({ id: repaired.id, slug: repaired.slug ?? index?.slug });
   if (
     publicVideo &&
     (!repaired.shortUrl ||

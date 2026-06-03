@@ -6,6 +6,7 @@ import { ok, notFound, badRequest, conflict, handleError } from "@/lib/api";
 
 const leadPayloadSchema = z.object({
   id: z.string().min(1),
+  slug: z.string().min(1).optional(),
   name: z.string().min(1),
   email: z.string(),
   website: z.string().url(),

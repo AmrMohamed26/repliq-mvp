@@ -16,6 +16,8 @@ export interface LeadMetadata {
 
 export interface Lead {
   id: string;
+  /** Stable public path segment for /v/[slug] (assigned at creation, never changes). */
+  slug?: string;
   name: string;
   email: string;
   website: string;

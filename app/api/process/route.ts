@@ -77,6 +77,7 @@ export async function POST(request: NextRequest) {
       leads.map((lead) =>
         setLeadResult(sessionId, {
           id: lead.id,
+          slug: lead.slug,
           name: lead.name,
           email: lead.email,
           website: lead.website,

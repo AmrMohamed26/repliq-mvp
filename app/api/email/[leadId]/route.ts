@@ -44,7 +44,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   }
 
   const { name, thumbnailUrl, posterThumbnailUrl, videoUrl } = index;
-  const watchUrl = watchPageUrl(leadId, origin);
+  const watchUrl = watchPageUrl({ id: leadId, slug: index.slug }, origin);
   const thumb = thumbnailUrlForEmail(leadId, thumbnailUrl, origin);
   const poster =
     posterThumbnailUrl?.startsWith("https://")

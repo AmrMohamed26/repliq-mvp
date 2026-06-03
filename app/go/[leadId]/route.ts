@@ -18,5 +18,8 @@ export async function GET(req: NextRequest, { params }: Params) {
     return new NextResponse("Video not found", { status: 404 });
   }
 
-  return NextResponse.redirect(watchPageUrl(leadId, origin), 302);
+  return NextResponse.redirect(
+    watchPageUrl({ id: leadId, slug: index.slug }, origin),
+    302,
+  );
 }

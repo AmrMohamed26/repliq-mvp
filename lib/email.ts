@@ -42,7 +42,7 @@ export function getEmailHtmlForResult(
   const watchUrl =
     result.shortUrl && !result.shortUrl.includes(".mp4")
       ? result.shortUrl
-      : watchPageUrl(result.id, requestOrigin);
+      : watchPageUrl({ id: result.id, slug: result.slug }, requestOrigin);
 
   const rawThumb =
     result.thumbnailUrl?.startsWith("https://") &&
@@ -54,6 +54,7 @@ export function getEmailHtmlForResult(
     rawThumb,
     requestOrigin,
   );
+
   const html = buildEmailBody({
     name: result.name,
     watchUrl,

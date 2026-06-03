@@ -55,9 +55,24 @@ export function getAppBaseUrl(requestOrigin?: string): string {
   return "http://localhost:3000";
 }
 
-/** Personalized watch page — /v/[leadId] with video player + Book a Call. */
-export function watchPageUrl(leadId: string, requestOrigin?: string): string {
-  return `${getAppBaseUrl(requestOrigin)}/v/${leadId}`;
+/** Public watch path segment: slug when set, else legacy lead ID. */
+export function watchPagePublicPath(lead: {
+  id: string;
+  slug?: string;
+}): string {
+  return lead.slug ?? lead.id;
+}
+
+/** Personalized watch page — /v/[slug|leadId] with video player + Book a Call. */
+export function watchPageUrl(
+  leadOrPath: string | { id: string; slug?: string },
+  requestOrigin?: string,
+): string {
+  const path =
+    typeof leadOrPath === "string"
+      ? leadOrPath
+      : watchPagePublicPath(leadOrPath);
+  return `${getAppBaseUrl(requestOrigin)}/v/${encodeURIComponent(path)}`;
 }
 
 /**
@@ -71,16 +86,6 @@ export function emailThumbnailProxyUrl(
   const pub = getPublicAppBaseUrl(requestOrigin);
   if (!pub) return undefined;
   return `${pub}/api/media/thumb/${leadId}`;
-}
-
-/** Talking-head frame for email avatar overlay (Gmail-friendly proxy). */
-export function emailAvatarProxyUrl(
-  leadId: string,
-  requestOrigin?: string,
-): string | undefined {
-  const pub = getPublicAppBaseUrl(requestOrigin);
-  if (!pub) return undefined;
-  return `${pub}/api/media/avatar/${leadId}`;
 }
 
 export function requestOriginFromNextRequest(req: {

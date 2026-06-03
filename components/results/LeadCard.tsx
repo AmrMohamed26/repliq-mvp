@@ -60,7 +60,7 @@ export function LeadCard({ result, compact = false }: LeadCardProps) {
   const watchUrl =
     result.shortUrl && !result.shortUrl.includes(".mp4")
       ? result.shortUrl
-      : `/v/${result.id}`;
+      : `/v/${result.slug ?? result.id}`;
   const thumbnailUrl = resolveThumbnailUrlForDisplay(
     result.id,
     result.posterThumbnailUrl ?? result.thumbnailUrl,

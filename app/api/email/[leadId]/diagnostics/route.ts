@@ -25,7 +25,7 @@ export async function GET(
     return NextResponse.json({ error: "Video not found" }, { status: 404 });
   }
 
-  const watchUrl = watchPageUrl(leadId, origin);
+  const watchUrl = watchPageUrl({ id: leadId, slug: index.slug }, origin);
   const thumb = thumbnailUrlForEmail(leadId, index.thumbnailUrl, origin);
 
   return NextResponse.json({

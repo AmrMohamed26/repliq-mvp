@@ -35,7 +35,10 @@ if (!index) {
 
 const stored = index.thumbnailUrl;
 const emailUrl = thumbnailUrlForEmail(leadId, stored, process.env.NEXT_PUBLIC_APP_URL);
-const watchUrl = watchPageUrl(leadId, process.env.NEXT_PUBLIC_APP_URL);
+const watchUrl = watchPageUrl(
+  { id: leadId, slug: index.slug },
+  process.env.NEXT_PUBLIC_APP_URL,
+);
 const html = buildEmailBody({
   name: index.name,
   watchUrl,
